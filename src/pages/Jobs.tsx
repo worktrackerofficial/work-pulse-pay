@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Search, Calendar, Users, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -65,10 +66,12 @@ export default function Jobs() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Job Management</h1>
-        <Button className="bg-gradient-to-r from-primary to-primary-glow">
-          <Plus className="mr-2 h-4 w-4" />
-          Create New Job
-        </Button>
+        <CreateJobDialog>
+          <Button className="bg-gradient-to-r from-primary to-primary-glow">
+            <Plus className="mr-2 h-4 w-4" />
+            Create New Job
+          </Button>
+        </CreateJobDialog>
       </div>
 
       {/* Search and Filters */}

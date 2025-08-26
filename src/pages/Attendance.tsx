@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Calendar, Clock, CheckCircle, XCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RecordAttendanceDialog } from "@/components/attendance/RecordAttendanceDialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -94,10 +95,12 @@ export default function Attendance() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Attendance Tracking</h1>
-        <Button className="bg-gradient-to-r from-primary to-primary-glow">
-          <Clock className="mr-2 h-4 w-4" />
-          Record Attendance
-        </Button>
+        <RecordAttendanceDialog>
+          <Button className="bg-gradient-to-r from-primary to-primary-glow">
+            <Clock className="mr-2 h-4 w-4" />
+            Record Attendance
+          </Button>
+        </RecordAttendanceDialog>
       </div>
 
       {/* Filters */}
