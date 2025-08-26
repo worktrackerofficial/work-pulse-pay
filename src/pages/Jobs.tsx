@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus, Search, Calendar, Users, DollarSign } from "lucide-react";
+import { Plus, Search, Calendar, Users, DollarSign, ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,7 @@ const jobs = [
 
 export default function Jobs() {
   const [searchTerm, setSearchTerm] = useState("");
+  const navigate = useNavigate();
 
   const filteredJobs = jobs.filter(job =>
     job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -138,11 +140,14 @@ export default function Jobs() {
               </div>
               
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="flex-1">
-                  View Details
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1">
-                  Manage
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => navigate(`/jobs/${job.id}`)}
+                >
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  Manage Job
                 </Button>
               </div>
             </CardContent>

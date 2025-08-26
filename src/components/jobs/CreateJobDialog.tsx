@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarIcon, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -24,12 +25,13 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
     deliverableType: "",
     targetDeliverable: "",
     payStructure: "",
-    baseRate: "",
-    commissionRate: "",
+    commissionPerItem: "",
+    flatRate: "",
     paymentFrequency: "",
   });
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
+  const [excludedDays, setExcludedDays] = useState<string[]>([]);
   const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -49,6 +51,7 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
       ...formData,
       startDate,
       endDate,
+      excludedDays,
     });
 
     toast({
@@ -65,12 +68,13 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
       deliverableType: "",
       targetDeliverable: "",
       payStructure: "",
-      baseRate: "",
-      commissionRate: "",
+      commissionPerItem: "",
+      flatRate: "",
       paymentFrequency: "",
     });
     setStartDate(undefined);
     setEndDate(undefined);
+    setExcludedDays([]);
   };
 
   return (
@@ -207,37 +211,62 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
                 <SelectValue placeholder="Select pay structure" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Commission + Base">Commission + Base</SelectItem>
-                <SelectItem value="Per Delivery">Per Delivery</SelectItem>
-                <SelectItem value="Hourly + Bonus">Hourly + Bonus</SelectItem>
-                <SelectItem value="Flat Rate">Flat Rate</SelectItem>
+                <SelectItem value="commission">Commission per Item</SelectItem>
+                <SelectItem value="flat">Flat Rate</SelectItem>
+                <SelectItem value="commission_adjusted">Commission × (Days Worked / Total Expected Days)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          {formData.payStructure === "commission" && (
             <div className="space-y-2">
-              <Label htmlFor="baseRate">Base Rate ($)</Label>
+              <Label htmlFor="commissionPerItem">Commission per Item ($)</Label>
               <Input
-                id="baseRate"
+                id="commissionPerItem"
                 type="number"
                 step="0.01"
-                value={formData.baseRate}
-                onChange={(e) => setFormData(prev => ({ ...prev, baseRate: e.target.value }))}
+                value={formData.commissionPerItem}
+                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: e.target.value }))}
                 placeholder="0.00"
+                required
               />
             </div>
+          )}
+
+          {formData.payStructure === "flat" && (
             <div className="space-y-2">
-              <Label htmlFor="commissionRate">Commission Rate ($)</Label>
+              <Label htmlFor="flatRate">Flat Rate ($)</Label>
               <Input
-                id="commissionRate"
+                id="flatRate"
                 type="number"
                 step="0.01"
-                value={formData.commissionRate}
-                onChange={(e) => setFormData(prev => ({ ...prev, commissionRate: e.target.value }))}
+                value={formData.flatRate}
+                onChange={(e) => setFormData(prev => ({ ...prev, flatRate: e.target.value }))}
                 placeholder="0.00"
+                required
               />
             </div>
+          )}
+
+          {formData.payStructure === "commission_adjusted" && (
+            <div className="space-y-2">
+              <Label htmlFor="commissionPerItem">Commission per Item ($)</Label>
+              <Input
+                id="commissionPerItem"
+                type="number"
+                step="0.01"
+                value={formData.commissionPerItem}
+                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: e.target.value }))}
+                placeholder="0.00"
+                required
+              />
+              <p className="text-sm text-muted-foreground">
+                Final pay = Items × Commission × (Days Worked / Total Expected Days)
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="paymentFrequency">Payment Frequency</Label>
               <Select value={formData.paymentFrequency} onValueChange={(value) => setFormData(prev => ({ ...prev, paymentFrequency: value }))}>
@@ -250,6 +279,27 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
                   <SelectItem value="Monthly">Monthly</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Exclude Days of Week</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
+                  <div key={day} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={day}
+                      checked={excludedDays.includes(day)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setExcludedDays(prev => [...prev, day]);
+                        } else {
+                          setExcludedDays(prev => prev.filter(d => d !== day));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={day} className="text-sm">{day.slice(0, 3)}</Label>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
