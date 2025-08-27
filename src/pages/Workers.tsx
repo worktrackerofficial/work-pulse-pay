@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AddWorkerDialog } from "@/components/jobs/AddWorkerDialog";
 
 // Mock data
 const workers = [
@@ -75,10 +76,12 @@ export default function Workers() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Worker Management</h1>
-        <Button className="bg-gradient-to-r from-primary to-primary-glow">
-          <Plus className="mr-2 h-4 w-4" />
-          Add New Worker
-        </Button>
+        <AddWorkerDialog jobId={0}>
+          <Button className="bg-gradient-to-r from-primary to-primary-glow">
+            <Plus className="mr-2 h-4 w-4" />
+            Add New Worker
+          </Button>
+        </AddWorkerDialog>
       </div>
 
       {/* Search and Filters */}

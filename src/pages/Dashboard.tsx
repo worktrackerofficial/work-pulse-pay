@@ -5,12 +5,20 @@ import {
   DollarSign, 
   TrendingUp,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Plus
 } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Mock data
 const recentActivity = [
@@ -27,13 +35,34 @@ const upcomingTasks = [
 ];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-        <Button className="bg-gradient-to-r from-primary to-primary-glow">
-          Quick Actions
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow">
+              <Plus className="mr-2 h-4 w-4" />
+              Quick Actions
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => navigate('/jobs')}>
+              <Briefcase className="mr-2 h-4 w-4" />
+              Create New Job
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/workers')}>
+              <Users className="mr-2 h-4 w-4" />
+              Add New Worker
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/attendance')}>
+              <Clock className="mr-2 h-4 w-4" />
+              Record Attendance
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Stats Grid */}

@@ -18,6 +18,7 @@ const mockJob = {
   startDate: "2024-01-15",
   endDate: "2024-03-15",
   deliverableType: "Daily Items",
+  deliverableFrequency: "daily" as const,
   targetDeliverable: 150,
   payStructure: "commission",
   commissionPerItem: 2.50,
@@ -243,6 +244,7 @@ export default function JobDetail() {
               jobId={job.id} 
               workers={job.workers} 
               deliverableType={job.deliverableType}
+              deliverableFrequency={job.deliverableFrequency}
             >
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <Plus className="mr-2 h-4 w-4" />

@@ -20,9 +20,10 @@ interface RecordDeliverablesDialogProps {
   jobId: number;
   workers: Worker[];
   deliverableType: string;
+  deliverableFrequency: "daily" | "weekly" | "monthly";
 }
 
-export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType }: RecordDeliverablesDialogProps) {
+export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType, deliverableFrequency }: RecordDeliverablesDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [deliverables, setDeliverables] = useState<{ [workerId: number]: string }>({});
