@@ -14,7 +14,270 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_name: string | null
+          entity_type: string
+          id: string
+          metadata: Json | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
+      attendance: {
+        Row: {
+          attendance_date: string
+          created_at: string
+          id: string
+          job_id: string
+          notes: string | null
+          status: Database["public"]["Enums"]["attendance_status"]
+          worker_id: string
+        }
+        Insert: {
+          attendance_date: string
+          created_at?: string
+          id?: string
+          job_id: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["attendance_status"]
+          worker_id: string
+        }
+        Update: {
+          attendance_date?: string
+          created_at?: string
+          id?: string
+          job_id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["attendance_status"]
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deliverables: {
+        Row: {
+          created_at: string
+          deliverable_date: string
+          id: string
+          job_id: string
+          notes: string | null
+          quantity: number
+          worker_id: string
+        }
+        Insert: {
+          created_at?: string
+          deliverable_date: string
+          id?: string
+          job_id: string
+          notes?: string | null
+          quantity?: number
+          worker_id: string
+        }
+        Update: {
+          created_at?: string
+          deliverable_date?: string
+          id?: string
+          job_id?: string
+          notes?: string | null
+          quantity?: number
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deliverables_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliverables_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_workers: {
+        Row: {
+          assigned_date: string
+          created_at: string
+          id: string
+          is_active: boolean
+          job_id: string
+          worker_id: string
+        }
+        Insert: {
+          assigned_date?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          job_id: string
+          worker_id: string
+        }
+        Update: {
+          assigned_date?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          job_id?: string
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_workers_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_workers_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "workers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          commission_per_item: number | null
+          created_at: string
+          deliverable_frequency: Database["public"]["Enums"]["deliverable_frequency"]
+          deliverable_type: string
+          description: string | null
+          end_date: string
+          excluded_days: string[] | null
+          flat_rate: number | null
+          hourly_rate: number | null
+          id: string
+          industry: string
+          name: string
+          pay_structure: Database["public"]["Enums"]["pay_structure"]
+          payment_frequency: string | null
+          start_date: string
+          status: Database["public"]["Enums"]["job_status"]
+          target_deliverable: number
+          updated_at: string
+        }
+        Insert: {
+          commission_per_item?: number | null
+          created_at?: string
+          deliverable_frequency?: Database["public"]["Enums"]["deliverable_frequency"]
+          deliverable_type: string
+          description?: string | null
+          end_date: string
+          excluded_days?: string[] | null
+          flat_rate?: number | null
+          hourly_rate?: number | null
+          id?: string
+          industry: string
+          name: string
+          pay_structure?: Database["public"]["Enums"]["pay_structure"]
+          payment_frequency?: string | null
+          start_date: string
+          status?: Database["public"]["Enums"]["job_status"]
+          target_deliverable?: number
+          updated_at?: string
+        }
+        Update: {
+          commission_per_item?: number | null
+          created_at?: string
+          deliverable_frequency?: Database["public"]["Enums"]["deliverable_frequency"]
+          deliverable_type?: string
+          description?: string | null
+          end_date?: string
+          excluded_days?: string[] | null
+          flat_rate?: number | null
+          hourly_rate?: number | null
+          id?: string
+          industry?: string
+          name?: string
+          pay_structure?: Database["public"]["Enums"]["pay_structure"]
+          payment_frequency?: string | null
+          start_date?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          target_deliverable?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      workers: {
+        Row: {
+          created_at: string
+          department: string
+          email: string | null
+          id: string
+          join_date: string
+          name: string
+          phone: string | null
+          role: string
+          status: Database["public"]["Enums"]["worker_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department: string
+          email?: string | null
+          id?: string
+          join_date?: string
+          name: string
+          phone?: string | null
+          role: string
+          status?: Database["public"]["Enums"]["worker_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department?: string
+          email?: string | null
+          id?: string
+          join_date?: string
+          name?: string
+          phone?: string | null
+          role?: string
+          status?: Database["public"]["Enums"]["worker_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +286,11 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      attendance_status: "present" | "absent" | "partial"
+      deliverable_frequency: "daily" | "weekly" | "monthly"
+      job_status: "active" | "completed" | "paused" | "cancelled"
+      pay_structure: "commission" | "flat" | "commission_adjusted" | "hourly"
+      worker_status: "active" | "inactive" | "terminated"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +417,12 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      attendance_status: ["present", "absent", "partial"],
+      deliverable_frequency: ["daily", "weekly", "monthly"],
+      job_status: ["active", "completed", "paused", "cancelled"],
+      pay_structure: ["commission", "flat", "commission_adjusted", "hourly"],
+      worker_status: ["active", "inactive", "terminated"],
+    },
   },
 } as const
