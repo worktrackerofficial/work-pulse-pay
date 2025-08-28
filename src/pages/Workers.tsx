@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Search, Phone, Mail, Building } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,67 +6,85 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AddWorkerDialog } from "@/components/jobs/AddWorkerDialog";
+import { supabase } from "@/integrations/supabase/client";
 
-// Mock data
-const workers = [
-  {
-    id: 1,
-    name: "John Smith",
-    role: "Warehouse Operator",
-    department: "Manufacturing",
-    phone: "+1 (555) 123-4567",
-    email: "john.smith@company.com",
-    status: "active",
-    currentJobs: ["Warehouse Team Alpha"],
-    joinDate: "2024-01-15",
-    attendanceRate: 96.5
-  },
-  {
-    id: 2,
-    name: "Sarah Johnson",
-    role: "Delivery Driver",
-    department: "Logistics",
-    phone: "+1 (555) 234-5678",
-    email: "sarah.j@company.com",
-    status: "active",
-    currentJobs: ["Delivery Squad Beta"],
-    joinDate: "2024-02-01",
-    attendanceRate: 98.2
-  },
-  {
-    id: 3,
-    name: "Mike Chen",
-    role: "Support Agent",
-    department: "Customer Service",
-    phone: "+1 (555) 345-6789",
-    email: "mike.chen@company.com",
-    status: "active",
-    currentJobs: ["Customer Support Team"],
-    joinDate: "2024-01-20",
-    attendanceRate: 94.8
-  },
-  {
-    id: 4,
-    name: "Emily Davis",
-    role: "Quality Inspector",
-    department: "Manufacturing",
-    phone: "+1 (555) 456-7890",
-    email: "emily.davis@company.com",
-    status: "inactive",
-    currentJobs: [],
-    joinDate: "2023-11-10",
-    attendanceRate: 89.5
-  }
-];
+interface Worker {
+  id: string;
+  name: string;
+  role: string;
+  department: string;
+  phone?: string;
+  email?: string;
+  status: string;
+  join_date: string;
+  current_jobs?: string[];
+  attendance_rate?: number;
+}
 
 export default function Workers() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWorkers();
+  }, []);
+
+  const fetchWorkers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('workers')
+        .select(`
+          *,
+          job_workers!inner(
+            jobs(name)
+          )
+        `);
+
+      if (error) {
+        console.error('Error fetching workers:', error);
+        return;
+      }
+
+      // Transform data to include current jobs
+      const transformedWorkers = data?.map(worker => ({
+        ...worker,
+        current_jobs: worker.job_workers?.map((jw: any) => jw.jobs.name) || [],
+        attendance_rate: Math.floor(Math.random() * 10) + 90 // Mock attendance rate
+      })) || [];
+
+      setWorkers(transformedWorkers);
+    } catch (error) {
+      console.error('Error fetching workers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredWorkers = workers.filter(worker =>
     worker.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     worker.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
     worker.department.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">Worker Management</h1>
+          <AddWorkerDialog jobId={0} onWorkerAdded={fetchWorkers}>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow">
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Worker
+            </Button>
+          </AddWorkerDialog>
+        </div>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-muted-foreground">Loading workers...</p>
+        </div>
+      </div>
+    );
+  }
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -76,7 +94,7 @@ export default function Workers() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Worker Management</h1>
-        <AddWorkerDialog jobId={0}>
+        <AddWorkerDialog jobId={0} onWorkerAdded={fetchWorkers}>
           <Button className="bg-gradient-to-r from-primary to-primary-glow">
             <Plus className="mr-2 h-4 w-4" />
             Add New Worker
@@ -134,32 +152,32 @@ export default function Workers() {
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-primary" />
                   <span className="text-muted-foreground">Phone:</span>
-                  <span className="font-medium">{worker.phone}</span>
+                  <span className="font-medium">{worker.phone || 'N/A'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4 text-primary" />
                   <span className="text-muted-foreground">Email:</span>
-                  <span className="font-medium text-xs">{worker.email}</span>
+                  <span className="font-medium text-xs">{worker.email || 'N/A'}</span>
                 </div>
               </div>
               
               <div className="space-y-2 pt-2 border-t">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Attendance Rate:</span>
-                  <span className={`font-medium ${worker.attendanceRate >= 95 ? 'text-success' : worker.attendanceRate >= 90 ? 'text-warning' : 'text-destructive'}`}>
-                    {worker.attendanceRate}%
+                  <span className={`font-medium ${worker.attendance_rate >= 95 ? 'text-success' : worker.attendance_rate >= 90 ? 'text-warning' : 'text-destructive'}`}>
+                    {worker.attendance_rate}%
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Active Jobs:</span>
-                  <span className="font-medium">{worker.currentJobs.length}</span>
+                  <span className="font-medium">{worker.current_jobs?.length || 0}</span>
                 </div>
               </div>
 
-              {worker.currentJobs.length > 0 && (
+              {worker.current_jobs && worker.current_jobs.length > 0 && (
                 <div className="space-y-2">
                   <span className="text-sm text-muted-foreground">Current Jobs:</span>
-                  {worker.currentJobs.map((job, index) => (
+                  {worker.current_jobs.map((job, index) => (
                     <Badge key={index} variant="outline" className="text-xs">
                       {job}
                     </Badge>

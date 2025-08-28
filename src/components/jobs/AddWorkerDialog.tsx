@@ -5,13 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AddWorkerDialogProps {
   children: React.ReactNode;
-  jobId: number;
+  jobId: string | number;
+  onWorkerAdded?: () => void;
 }
 
-export function AddWorkerDialog({ children, jobId }: AddWorkerDialogProps) {
+export function AddWorkerDialog({ children, jobId, onWorkerAdded }: AddWorkerDialogProps) {
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -22,35 +24,77 @@ export function AddWorkerDialog({ children, jobId }: AddWorkerDialogProps) {
   });
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.name || !formData.role) {
       toast({
-        title: "Missing Information",
-        description: "Please fill in name and role.",
+        title: "Error",
+        description: "Name and role are required fields.",
         variant: "destructive",
       });
       return;
     }
 
-    // Here you would normally save to database
-    console.log("Adding worker to job:", { jobId, ...formData });
+    try {
+      // First, create the worker
+      const { data: worker, error: workerError } = await supabase
+        .from('workers')
+        .insert({
+          name: formData.name,
+          email: formData.email || null,
+          phone: formData.phone || null,
+          role: formData.role,
+          department: formData.department
+        })
+        .select()
+        .single();
 
-    toast({
-      title: "Worker Added",
-      description: `${formData.name} has been added to the job.`,
-    });
+      if (workerError) throw workerError;
 
-    setOpen(false);
-    // Reset form
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      role: "",
-      department: "",
-    });
+      // If jobId is provided and not 0, assign worker to job
+      if (jobId && jobId !== 0 && jobId !== "0") {
+        const { error: assignmentError } = await supabase
+          .from('job_workers')
+          .insert({
+            job_id: jobId.toString(),
+            worker_id: worker.id
+          });
+
+        if (assignmentError) throw assignmentError;
+      }
+
+      // Log activity
+      await supabase.from('activity_logs').insert({
+        action: 'Worker added',
+        entity_type: 'worker',
+        entity_name: formData.name
+      });
+
+      toast({
+        title: "Success",
+        description: `Worker ${formData.name} has been added successfully!`,
+      });
+
+      // Reset form
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        role: "",
+        department: "",
+      });
+      
+      setOpen(false);
+      onWorkerAdded?.();
+    } catch (error) {
+      console.error('Error adding worker:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add worker. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

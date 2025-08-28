@@ -1,80 +1,130 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
-import { CalendarIcon, Plus } from "lucide-react";
-import { format } from "date-fns";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface CreateJobDialogProps {
   children: React.ReactNode;
+  onJobCreated?: () => void;
 }
 
-export function CreateJobDialog({ children }: CreateJobDialogProps) {
+export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps) {
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+  
   const [formData, setFormData] = useState({
     name: "",
     industry: "",
     description: "",
+    startDate: "",
+    endDate: "",
     deliverableType: "",
-    targetDeliverable: "",
-    payStructure: "",
-    commissionPerItem: "",
-    flatRate: "",
-    paymentFrequency: "",
+    deliverableFrequency: "daily",
+    targetDeliverable: 0,
+    payStructure: "commission",
+    commissionPerItem: 0,
+    flatRate: 0,
+    hourlyRate: 0,
+    paymentFrequency: "Weekly",
+    excludedDays: [] as string[]
   });
-  const [startDate, setStartDate] = useState<Date>();
-  const [endDate, setEndDate] = useState<Date>();
-  const [excludedDays, setExcludedDays] = useState<string[]>([]);
-  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.industry || !startDate || !endDate) {
+    if (!formData.name || !formData.industry || !formData.startDate || !formData.endDate) {
       toast({
-        title: "Missing Information",
+        title: "Error",
         description: "Please fill in all required fields.",
         variant: "destructive",
       });
       return;
     }
 
-    // Here you would normally save to database
-    console.log("Creating job:", {
-      ...formData,
-      startDate,
-      endDate,
-      excludedDays,
-    });
+    setLoading(true);
+    
+    try {
+      const { error } = await supabase.from('jobs').insert({
+        name: formData.name,
+        industry: formData.industry,
+        description: formData.description,
+        start_date: formData.startDate,
+        end_date: formData.endDate,
+        deliverable_type: formData.deliverableType,
+        deliverable_frequency: formData.deliverableFrequency as any,
+        target_deliverable: formData.targetDeliverable,
+        pay_structure: formData.payStructure as any,
+        commission_per_item: formData.commissionPerItem,
+        flat_rate: formData.flatRate,
+        hourly_rate: formData.hourlyRate,
+        payment_frequency: formData.paymentFrequency,
+        excluded_days: formData.excludedDays
+      });
 
-    toast({
-      title: "Job Created",
-      description: `${formData.name} has been created successfully.`,
-    });
+      if (error) throw error;
 
-    setOpen(false);
-    // Reset form
-    setFormData({
-      name: "",
-      industry: "",
-      description: "",
-      deliverableType: "",
-      targetDeliverable: "",
-      payStructure: "",
-      commissionPerItem: "",
-      flatRate: "",
-      paymentFrequency: "",
-    });
-    setStartDate(undefined);
-    setEndDate(undefined);
-    setExcludedDays([]);
+      // Log activity
+      await supabase.from('activity_logs').insert({
+        action: 'New job created',
+        entity_type: 'job',
+        entity_name: formData.name
+      });
+
+      toast({
+        title: "Success",
+        description: "Job created successfully!",
+      });
+
+      // Reset form
+      setFormData({
+        name: "",
+        industry: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+        deliverableType: "",
+        deliverableFrequency: "daily",
+        targetDeliverable: 0,
+        payStructure: "commission",
+        commissionPerItem: 0,
+        flatRate: 0,
+        hourlyRate: 0,
+        paymentFrequency: "Weekly",
+        excludedDays: []
+      });
+      
+      setOpen(false);
+      onJobCreated?.();
+    } catch (error) {
+      console.error('Error creating job:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create job. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -84,13 +134,13 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5 text-primary" />
-            Create New Job
-          </DialogTitle>
+          <DialogTitle>Create New Job</DialogTitle>
+          <DialogDescription>
+            Add a new job to your system with all the necessary details.
+          </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Job Name *</Label>
@@ -99,24 +149,16 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="e.g., Warehouse Team Alpha"
-                required
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="industry">Industry *</Label>
-              <Select value={formData.industry} onValueChange={(value) => setFormData(prev => ({ ...prev, industry: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select industry" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Manufacturing">Manufacturing</SelectItem>
-                  <SelectItem value="Logistics">Logistics</SelectItem>
-                  <SelectItem value="Service">Service</SelectItem>
-                  <SelectItem value="Retail">Retail</SelectItem>
-                  <SelectItem value="Construction">Construction</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="industry"
+                value={formData.industry}
+                onChange={(e) => setFormData(prev => ({ ...prev, industry: e.target.value }))}
+                placeholder="e.g., Manufacturing"
+              />
             </div>
           </div>
 
@@ -132,108 +174,97 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Start Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="startDate">Start Date *</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+              />
             </div>
             <div className="space-y-2">
-              <Label>End Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start text-left font-normal"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label htmlFor="endDate">End Date *</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => setFormData(prev => ({ ...prev, endDate: e.target.value }))}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="deliverableType">Deliverable Type</Label>
-              <Select value={formData.deliverableType} onValueChange={(value) => setFormData(prev => ({ ...prev, deliverableType: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Daily Items">Daily Items</SelectItem>
-                  <SelectItem value="Weekly Deliveries">Weekly Deliveries</SelectItem>
-                  <SelectItem value="Monthly Tickets">Monthly Tickets</SelectItem>
-                  <SelectItem value="Hourly Tasks">Hourly Tasks</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="deliverableType"
+                value={formData.deliverableType}
+                onChange={(e) => setFormData(prev => ({ ...prev, deliverableType: e.target.value }))}
+                placeholder="e.g., Daily Items, Weekly Reports"
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="targetDeliverable">Target per Period</Label>
-              <Input
-                id="targetDeliverable"
-                type="number"
-                value={formData.targetDeliverable}
-                onChange={(e) => setFormData(prev => ({ ...prev, targetDeliverable: e.target.value }))}
-                placeholder="e.g., 150"
-              />
+              <Label htmlFor="deliverableFrequency">Deliverable Frequency</Label>
+              <Select
+                value={formData.deliverableFrequency}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, deliverableFrequency: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="targetDeliverable">Target Deliverable</Label>
+            <Input
+              id="targetDeliverable"
+              type="number"
+              value={formData.targetDeliverable}
+              onChange={(e) => setFormData(prev => ({ ...prev, targetDeliverable: parseInt(e.target.value) || 0 }))}
+              placeholder="150"
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="payStructure">Pay Structure</Label>
-            <Select value={formData.payStructure} onValueChange={(value) => setFormData(prev => ({ ...prev, payStructure: value }))}>
+            <Select
+              value={formData.payStructure}
+              onValueChange={(value) => setFormData(prev => ({ ...prev, payStructure: value }))}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select pay structure" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="commission">Commission per Item</SelectItem>
+                <SelectItem value="commission">Commission</SelectItem>
                 <SelectItem value="flat">Flat Rate</SelectItem>
-                <SelectItem value="commission_adjusted">Commission × (Days Worked / Total Expected Days)</SelectItem>
+                <SelectItem value="hourly">Hourly</SelectItem>
+                <SelectItem value="commission_adjusted">Commission Adjusted</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {formData.payStructure === "commission" && (
+          {formData.payStructure === 'commission' && (
             <div className="space-y-2">
-              <Label htmlFor="commissionPerItem">Commission per Item ($)</Label>
+              <Label htmlFor="commissionPerItem">Commission Per Item ($)</Label>
               <Input
                 id="commissionPerItem"
                 type="number"
                 step="0.01"
                 value={formData.commissionPerItem}
-                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: e.target.value }))}
-                placeholder="0.00"
-                required
+                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: parseFloat(e.target.value) || 0 }))}
+                placeholder="2.50"
               />
             </div>
           )}
 
-          {formData.payStructure === "flat" && (
+          {formData.payStructure === 'flat' && (
             <div className="space-y-2">
               <Label htmlFor="flatRate">Flat Rate ($)</Label>
               <Input
@@ -241,74 +272,32 @@ export function CreateJobDialog({ children }: CreateJobDialogProps) {
                 type="number"
                 step="0.01"
                 value={formData.flatRate}
-                onChange={(e) => setFormData(prev => ({ ...prev, flatRate: e.target.value }))}
-                placeholder="0.00"
-                required
+                onChange={(e) => setFormData(prev => ({ ...prev, flatRate: parseFloat(e.target.value) || 0 }))}
+                placeholder="100.00"
               />
             </div>
           )}
 
-          {formData.payStructure === "commission_adjusted" && (
+          {formData.payStructure === 'hourly' && (
             <div className="space-y-2">
-              <Label htmlFor="commissionPerItem">Commission per Item ($)</Label>
+              <Label htmlFor="hourlyRate">Hourly Rate ($)</Label>
               <Input
-                id="commissionPerItem"
+                id="hourlyRate"
                 type="number"
                 step="0.01"
-                value={formData.commissionPerItem}
-                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: e.target.value }))}
-                placeholder="0.00"
-                required
+                value={formData.hourlyRate}
+                onChange={(e) => setFormData(prev => ({ ...prev, hourlyRate: parseFloat(e.target.value) || 0 }))}
+                placeholder="15.00"
               />
-              <p className="text-sm text-muted-foreground">
-                Final pay = Items × Commission × (Days Worked / Total Expected Days)
-              </p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="paymentFrequency">Payment Frequency</Label>
-              <Select value={formData.paymentFrequency} onValueChange={(value) => setFormData(prev => ({ ...prev, paymentFrequency: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select frequency" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Daily">Daily</SelectItem>
-                  <SelectItem value="Weekly">Weekly</SelectItem>
-                  <SelectItem value="Monthly">Monthly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Exclude Days of Week</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
-                  <div key={day} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={day}
-                      checked={excludedDays.includes(day)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setExcludedDays(prev => [...prev, day]);
-                        } else {
-                          setExcludedDays(prev => prev.filter(d => d !== day));
-                        }
-                      }}
-                    />
-                    <Label htmlFor={day} className="text-sm">{day.slice(0, 3)}</Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+          <div className="flex gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
               Cancel
             </Button>
-            <Button type="submit" className="bg-gradient-to-r from-primary to-primary-glow">
-              Create Job
+            <Button type="submit" disabled={loading} className="flex-1">
+              {loading ? "Creating..." : "Create Job"}
             </Button>
           </div>
         </form>

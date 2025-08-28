@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { 
   Users, 
   Briefcase, 
@@ -19,14 +20,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
+import { formatDistanceToNow } from "date-fns";
 
-// Mock data
-const recentActivity = [
-  { id: 1, action: "New job created", job: "Warehouse Team Alpha", time: "2 hours ago" },
-  { id: 2, action: "Attendance recorded", worker: "John Smith", time: "3 hours ago" },
-  { id: 3, action: "Payout processed", amount: "$2,340", time: "5 hours ago" },
-  { id: 4, action: "Worker added", worker: "Sarah Johnson", time: "1 day ago" },
-];
+interface ActivityLog {
+  id: string;
+  action: string;
+  entity_name: string;
+  created_at: string;
+}
+
+interface DashboardStats {
+  activeWorkers: number;
+  activeJobs: number;
+  attendanceRate: string;
+  pendingPayouts: string;
+}
 
 const upcomingTasks = [
   { id: 1, task: "Process weekly payouts", due: "Tomorrow", priority: "high" },
@@ -36,6 +45,48 @@ const upcomingTasks = [
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats>({
+    activeWorkers: 0,
+    activeJobs: 0,
+    attendanceRate: "0%",
+    pendingPayouts: "$0"
+  });
+  const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      // Fetch stats
+      const [workersResult, jobsResult, activityResult] = await Promise.all([
+        supabase.from('workers').select('*', { count: 'exact' }).eq('status', 'active'),
+        supabase.from('jobs').select('*', { count: 'exact' }).eq('status', 'active'),
+        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(4)
+      ]);
+
+      // Calculate attendance rate (mock for now)
+      const attendanceRate = "94.2%";
+      const pendingPayouts = "$18,450";
+
+      setStats({
+        activeWorkers: workersResult.count || 0,
+        activeJobs: jobsResult.count || 0,
+        attendanceRate,
+        pendingPayouts
+      });
+
+      if (activityResult.data) {
+        setRecentActivity(activityResult.data);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -69,28 +120,28 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Active Workers"
-          value={156}
+          value={loading ? "..." : stats.activeWorkers}
           icon={<Users className="h-4 w-4" />}
           trend={{ value: 12, isPositive: true }}
           description="8 new this week"
         />
         <StatsCard
           title="Active Jobs"
-          value={23}
+          value={loading ? "..." : stats.activeJobs}
           icon={<Briefcase className="h-4 w-4" />}
           trend={{ value: 5, isPositive: true }}
           description="3 ending this week"
         />
         <StatsCard
           title="Attendance Rate"
-          value="94.2%"
+          value={loading ? "..." : stats.attendanceRate}
           icon={<Clock className="h-4 w-4" />}
           trend={{ value: 2.1, isPositive: true }}
           description="This week average"
         />
         <StatsCard
           title="Pending Payouts"
-          value="$18,450"
+          value={loading ? "..." : stats.pendingPayouts}
           icon={<DollarSign className="h-4 w-4" />}
           description="Due this week"
         />
@@ -112,10 +163,12 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm font-medium">{activity.action}</p>
                     <p className="text-xs text-muted-foreground">
-                      {activity.job || activity.worker || activity.amount}
+                      {activity.entity_name}
                     </p>
                   </div>
-                  <span className="text-xs text-muted-foreground">{activity.time}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                  </span>
                 </div>
               ))}
             </div>

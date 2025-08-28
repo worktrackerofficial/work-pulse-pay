@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Search, Calendar, Users, DollarSign, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,69 +6,105 @@ import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
 
-// Mock data
-const jobs = [
-  {
-    id: 1,
-    name: "Warehouse Team Alpha",
-    industry: "Manufacturing",
-    startDate: "2024-01-15",
-    endDate: "2024-03-15",
-    workers: 12,
-    payStructure: "Commission + Base",
-    status: "active",
-    deliverableType: "Daily Items",
-    targetDeliverable: 150
-  },
-  {
-    id: 2,
-    name: "Delivery Squad Beta",
-    industry: "Logistics",
-    startDate: "2024-02-01",
-    endDate: "2024-04-30",
-    workers: 8,
-    payStructure: "Per Delivery",
-    status: "active",
-    deliverableType: "Weekly Deliveries",
-    targetDeliverable: 50
-  },
-  {
-    id: 3,
-    name: "Customer Support Team",
-    industry: "Service",
-    startDate: "2024-01-01",
-    endDate: "2024-12-31",
-    workers: 15,
-    payStructure: "Hourly + Bonus",
-    status: "active",
-    deliverableType: "Monthly Tickets",
-    targetDeliverable: 200
-  }
-];
+interface Job {
+  id: string;
+  name: string;
+  industry: string;
+  start_date: string;
+  end_date: string;
+  deliverable_type: string;
+  target_deliverable: number;
+  pay_structure: string;
+  commission_per_item: number;
+  flat_rate: number;
+  hourly_rate: number;
+  status: string;
+  worker_count?: number;
+}
 
 export default function Jobs() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
+
+  const fetchJobs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select(`
+          *,
+          job_workers!inner(count)
+        `)
+        .eq('job_workers.is_active', true);
+
+      if (error) {
+        console.error('Error fetching jobs:', error);
+        return;
+      }
+
+      // Transform data to include worker count
+      const transformedJobs = data?.map(job => ({
+        ...job,
+        worker_count: job.job_workers?.length || 0
+      })) || [];
+
+      setJobs(transformedJobs);
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPayStructureDisplay = (job: Job) => {
+    switch (job.pay_structure) {
+      case 'commission':
+        return `$${job.commission_per_item} per item`;
+      case 'flat':
+        return `$${job.flat_rate} flat rate`;
+      case 'hourly':
+        return `$${job.hourly_rate}/hr`;
+      default:
+        return 'Commission';
+    }
+  };
 
   const filteredJobs = jobs.filter(job =>
     job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     job.industry.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">Job Management</h1>
+          <CreateJobDialog onJobCreated={fetchJobs}>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow">
+              <Plus className="mr-2 h-4 w-4" />
+              Create New Job
+            </Button>
+          </CreateJobDialog>
+        </div>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-muted-foreground">Loading jobs...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Job Management</h1>
-        <CreateJobDialog>
+        <CreateJobDialog onJobCreated={fetchJobs}>
           <Button className="bg-gradient-to-r from-primary to-primary-glow">
             <Plus className="mr-2 h-4 w-4" />
             Create New Job
@@ -116,26 +152,26 @@ export default function Jobs() {
                   <span className="text-muted-foreground">Duration</span>
                 </div>
                 <div className="text-right">
-                  {new Date(job.startDate).toLocaleDateString()} - {new Date(job.endDate).toLocaleDateString()}
+                  {new Date(job.start_date).toLocaleDateString()} - {new Date(job.end_date).toLocaleDateString()}
                 </div>
                 
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4 text-primary" />
                   <span className="text-muted-foreground">Workers</span>
                 </div>
-                <div className="text-right font-medium">{job.workers}</div>
+                <div className="text-right font-medium">{job.worker_count || 0}</div>
                 
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-primary" />
                   <span className="text-muted-foreground">Pay Structure</span>
                 </div>
-                <div className="text-right font-medium">{job.payStructure}</div>
+                <div className="text-right font-medium">{getPayStructureDisplay(job)}</div>
               </div>
               
               <div className="pt-2 border-t">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Target:</span>
-                  <span className="font-medium">{job.targetDeliverable} {job.deliverableType}</span>
+                  <span className="font-medium">{job.target_deliverable} {job.deliverable_type}</span>
                 </div>
               </div>
               

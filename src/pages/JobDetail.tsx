@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Users, Calendar, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,38 +8,97 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddWorkerDialog } from "@/components/jobs/AddWorkerDialog";
 import { RecordAttendanceDialog } from "@/components/jobs/RecordAttendanceDialog";
 import { RecordDeliverablesDialog } from "@/components/jobs/RecordDeliverablesDialog";
+import { supabase } from "@/integrations/supabase/client";
 
-// Mock data - in real app this would come from backend
-const mockJob = {
-  id: 1,
-  name: "Warehouse Team Alpha",
-  industry: "Manufacturing",
-  description: "Processing and packaging items for delivery",
-  startDate: "2024-01-15",
-  endDate: "2024-03-15",
-  deliverableType: "Daily Items",
-  deliverableFrequency: "daily" as const,
-  targetDeliverable: 150,
-  payStructure: "commission",
-  commissionPerItem: 2.50,
-  flatRate: 0,
-  paymentFrequency: "Weekly",
-  excludedDays: ["Sunday"],
-  status: "active",
-  workers: [
-    { id: 1, name: "John Doe", role: "Packer", joinDate: "2024-01-15", status: "active" },
-    { id: 2, name: "Jane Smith", role: "Quality Check", joinDate: "2024-01-16", status: "active" },
-    { id: 3, name: "Mike Johnson", role: "Supervisor", joinDate: "2024-01-15", status: "active" },
-  ]
-};
+interface Job {
+  id: string;
+  name: string;
+  industry: string;
+  description?: string;
+  start_date: string;
+  end_date: string;
+  deliverable_type: string;
+  deliverable_frequency: string;
+  target_deliverable: number;
+  pay_structure: string;
+  commission_per_item: number;
+  flat_rate: number;
+  hourly_rate: number;
+  payment_frequency: string;
+  excluded_days: string[];
+  status: string;
+}
+
+interface Worker {
+  id: string;
+  name: string;
+  role: string;
+  join_date: string;
+  status: string;
+}
 
 export default function JobDetail() {
   const { jobId } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
+  const [job, setJob] = useState<Job | null>(null);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // In real app, you'd fetch job data based on jobId
-  const job = mockJob;
+  useEffect(() => {
+    if (jobId) {
+      fetchJobData();
+    }
+  }, [jobId]);
+
+  const fetchJobData = async () => {
+    try {
+      // Fetch job details
+      const { data: jobData, error: jobError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+
+      if (jobError) throw jobError;
+
+      // Fetch workers for this job
+      const { data: workersData, error: workersError } = await supabase
+        .from('job_workers')
+        .select(`
+          workers (
+            id,
+            name,
+            role,
+            join_date,
+            status
+          )
+        `)
+        .eq('job_id', jobId)
+        .eq('is_active', true);
+
+      if (workersError) throw workersError;
+
+      setJob(jobData);
+      setWorkers(workersData?.map(jw => jw.workers).filter(Boolean) || []);
+    } catch (error) {
+      console.error('Error fetching job data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onWorkerAdded = () => {
+    fetchJobData();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <p className="text-muted-foreground">Loading job details...</p>
+      </div>
+    );
+  }
 
   if (!job) {
     return (
@@ -85,7 +144,7 @@ export default function JobDetail() {
               <div>
                 <p className="text-sm text-muted-foreground">Duration</p>
                 <p className="font-medium">
-                  {new Date(job.startDate).toLocaleDateString()} - {new Date(job.endDate).toLocaleDateString()}
+                  {new Date(job.start_date).toLocaleDateString()} - {new Date(job.end_date).toLocaleDateString()}
                 </p>
               </div>
             </div>
@@ -98,7 +157,7 @@ export default function JobDetail() {
               <Users className="h-4 w-4 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Workers</p>
-                <p className="font-medium">{job.workers.length} Active</p>
+                <p className="font-medium">{workers.length} Active</p>
               </div>
             </div>
           </CardContent>
@@ -110,7 +169,7 @@ export default function JobDetail() {
               <CheckCircle className="h-4 w-4 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Target</p>
-                <p className="font-medium">{job.targetDeliverable} {job.deliverableType}</p>
+                <p className="font-medium">{job.target_deliverable} {job.deliverable_type}</p>
               </div>
             </div>
           </CardContent>
@@ -121,9 +180,10 @@ export default function JobDetail() {
             <div>
               <p className="text-sm text-muted-foreground">Pay Structure</p>
               <p className="font-medium">
-                {job.payStructure === 'commission' && `$${job.commissionPerItem} per item`}
-                {job.payStructure === 'flat' && `$${job.flatRate} flat rate`}
-                {job.payStructure === 'commission_adjusted' && `$${job.commissionPerItem} adjusted`}
+                {job.pay_structure === 'commission' && `$${job.commission_per_item} per item`}
+                {job.pay_structure === 'flat' && `$${job.flat_rate} flat rate`}
+                {job.pay_structure === 'hourly' && `$${job.hourly_rate}/hr`}
+                {job.pay_structure === 'commission_adjusted' && `$${job.commission_per_item} adjusted`}
               </p>
             </div>
           </CardContent>
@@ -151,15 +211,15 @@ export default function JobDetail() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Start Date:</span>
-                      <span>{new Date(job.startDate).toLocaleDateString()}</span>
+                      <span>{new Date(job.start_date).toLocaleDateString()}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">End Date:</span>
-                      <span>{new Date(job.endDate).toLocaleDateString()}</span>
+                      <span>{new Date(job.end_date).toLocaleDateString()}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Excluded Days:</span>
-                      <span>{job.excludedDays.join(", ") || "None"}</span>
+                      <span>{job.excluded_days?.join(", ") || "None"}</span>
                     </div>
                   </div>
                 </div>
@@ -168,15 +228,19 @@ export default function JobDetail() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Pay Structure:</span>
-                      <span className="capitalize">{job.payStructure.replace('_', ' ')}</span>
+                      <span className="capitalize">{job.pay_structure.replace('_', ' ')}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Rate:</span>
-                      <span>${job.commissionPerItem} per item</span>
+                      <span>
+                        {job.pay_structure === 'commission' && `$${job.commission_per_item} per item`}
+                        {job.pay_structure === 'flat' && `$${job.flat_rate} flat rate`}
+                        {job.pay_structure === 'hourly' && `$${job.hourly_rate}/hr`}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Payment Frequency:</span>
-                      <span>{job.paymentFrequency}</span>
+                      <span>{job.payment_frequency}</span>
                     </div>
                   </div>
                 </div>
@@ -188,7 +252,7 @@ export default function JobDetail() {
         <TabsContent value="workers" className="space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Job Workers</h3>
-            <AddWorkerDialog jobId={job.id}>
+            <AddWorkerDialog jobId={job.id} onWorkerAdded={onWorkerAdded}>
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Worker
@@ -197,7 +261,7 @@ export default function JobDetail() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {job.workers.map((worker) => (
+            {workers.map((worker) => (
               <Card key={worker.id} className="shadow-card">
                 <CardContent className="pt-6">
                   <div className="flex justify-between items-start mb-4">
@@ -205,10 +269,10 @@ export default function JobDetail() {
                       <h4 className="font-medium">{worker.name}</h4>
                       <p className="text-sm text-muted-foreground">{worker.role}</p>
                     </div>
-                    <Badge variant="secondary">Active</Badge>
+                    <Badge variant="secondary">{worker.status}</Badge>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Joined: {new Date(worker.joinDate).toLocaleDateString()}
+                    Joined: {new Date(worker.join_date).toLocaleDateString()}
                   </div>
                 </CardContent>
               </Card>
@@ -219,7 +283,7 @@ export default function JobDetail() {
         <TabsContent value="attendance" className="space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Attendance Management</h3>
-            <RecordAttendanceDialog jobId={job.id} workers={job.workers}>
+            <RecordAttendanceDialog jobId={job.id} workers={workers}>
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 Record Attendance
@@ -242,9 +306,9 @@ export default function JobDetail() {
             <h3 className="text-lg font-semibold">Deliverables Tracking</h3>
             <RecordDeliverablesDialog 
               jobId={job.id} 
-              workers={job.workers} 
-              deliverableType={job.deliverableType}
-              deliverableFrequency={job.deliverableFrequency}
+              workers={workers} 
+              deliverableType={job.deliverable_type}
+              deliverableFrequency={job.deliverable_frequency as any}
             >
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <Plus className="mr-2 h-4 w-4" />
@@ -259,7 +323,7 @@ export default function JobDetail() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Target: {job.targetDeliverable} {job.deliverableType}
+                Target: {job.target_deliverable} {job.deliverable_type}
               </p>
               <p className="text-muted-foreground mt-2">
                 No deliverables recorded yet. Start tracking worker output.

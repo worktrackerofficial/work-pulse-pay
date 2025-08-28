@@ -10,14 +10,14 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 interface Worker {
-  id: number;
+  id: string;
   name: string;
   role: string;
 }
 
 interface RecordAttendanceDialogProps {
   children: React.ReactNode;
-  jobId: number;
+  jobId: string;
   workers: Worker[];
 }
 
