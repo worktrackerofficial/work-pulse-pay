@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AddWorkerDialog } from "@/components/jobs/AddWorkerDialog";
+import { WorkerProfileDialog } from "@/components/workers/WorkerProfileDialog";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Worker {
@@ -186,12 +187,11 @@ export default function Workers() {
               )}
               
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="flex-1">
-                  View Profile
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1">
-                  Edit
-                </Button>
+                <WorkerProfileDialog workerId={worker.id} onWorkerUpdated={fetchWorkers}>
+                  <Button variant="outline" size="sm" className="flex-1">
+                    View Profile
+                  </Button>
+                </WorkerProfileDialog>
               </div>
             </CardContent>
           </Card>

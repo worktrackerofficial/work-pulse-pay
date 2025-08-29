@@ -22,9 +22,10 @@ interface RecordDeliverablesDialogProps {
   workers: Worker[];
   deliverableType: string;
   deliverableFrequency: "daily" | "weekly" | "monthly";
+  onDeliverablesRecorded?: () => void;
 }
 
-export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType, deliverableFrequency }: RecordDeliverablesDialogProps) {
+export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType, deliverableFrequency, onDeliverablesRecorded }: RecordDeliverablesDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [deliverables, setDeliverables] = useState<{ [workerId: string]: string }>({});
@@ -76,6 +77,7 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
       setOpen(false);
       setSelectedDate(undefined);
       setDeliverables({});
+      onDeliverablesRecorded?.();
     } catch (error) {
       console.error('Error recording deliverables:', error);
       toast({

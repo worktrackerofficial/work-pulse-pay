@@ -20,9 +20,10 @@ interface RecordAttendanceDialogProps {
   children: React.ReactNode;
   jobId: string;
   workers: Worker[];
+  onAttendanceRecorded?: () => void;
 }
 
-export function RecordAttendanceDialog({ children, jobId, workers }: RecordAttendanceDialogProps) {
+export function RecordAttendanceDialog({ children, jobId, workers, onAttendanceRecorded }: RecordAttendanceDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [attendance, setAttendance] = useState<{ [workerId: string]: boolean }>({});
@@ -63,6 +64,7 @@ export function RecordAttendanceDialog({ children, jobId, workers }: RecordAtten
       setOpen(false);
       setSelectedDate(undefined);
       setAttendance({});
+      onAttendanceRecorded?.();
     } catch (error) {
       console.error('Error recording attendance:', error);
       toast({

@@ -44,6 +44,8 @@ export default function JobDetail() {
   const [job, setJob] = useState<Job | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
+  const [recentDeliverables, setRecentDeliverables] = useState<any[]>([]);
 
   useEffect(() => {
     if (jobId) {
@@ -79,8 +81,32 @@ export default function JobDetail() {
 
       if (workersError) throw workersError;
 
+      // Fetch recent attendance
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance')
+        .select(`
+          *,
+          workers (name)
+        `)
+        .eq('job_id', jobId)
+        .order('attendance_date', { ascending: false })
+        .limit(10);
+
+      // Fetch recent deliverables
+      const { data: deliverablesData, error: deliverablesError } = await supabase
+        .from('deliverables')
+        .select(`
+          *,
+          workers (name)
+        `)
+        .eq('job_id', jobId)
+        .order('deliverable_date', { ascending: false })
+        .limit(10);
+
       setJob(jobData);
       setWorkers(workersData?.map(jw => jw.workers).filter(Boolean) || []);
+      setRecentAttendance(attendanceData || []);
+      setRecentDeliverables(deliverablesData || []);
     } catch (error) {
       console.error('Error fetching job data:', error);
     } finally {
@@ -89,6 +115,14 @@ export default function JobDetail() {
   };
 
   const onWorkerAdded = () => {
+    fetchJobData();
+  };
+
+  const onAttendanceRecorded = () => {
+    fetchJobData();
+  };
+
+  const onDeliverablesRecorded = () => {
     fetchJobData();
   };
 
@@ -283,7 +317,7 @@ export default function JobDetail() {
         <TabsContent value="attendance" className="space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Attendance Management</h3>
-            <RecordAttendanceDialog jobId={job.id} workers={workers}>
+            <RecordAttendanceDialog jobId={job.id} workers={workers} onAttendanceRecorded={onAttendanceRecorded}>
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <CheckCircle className="mr-2 h-4 w-4" />
                 Record Attendance
@@ -296,7 +330,25 @@ export default function JobDetail() {
               <CardTitle>Recent Attendance</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">No attendance records yet. Start recording daily attendance for this job.</p>
+              {recentAttendance.length > 0 ? (
+                <div className="space-y-3">
+                  {recentAttendance.map((record) => (
+                    <div key={record.id} className="flex justify-between items-center p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">{record.workers?.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(record.attendance_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Badge variant={record.status === 'present' ? 'default' : 'destructive'}>
+                        {record.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No attendance records yet. Start recording daily attendance for this job.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -309,6 +361,7 @@ export default function JobDetail() {
               workers={workers} 
               deliverableType={job.deliverable_type}
               deliverableFrequency={job.deliverable_frequency as any}
+              onDeliverablesRecorded={onDeliverablesRecorded}
             >
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <Plus className="mr-2 h-4 w-4" />
@@ -322,12 +375,38 @@ export default function JobDetail() {
               <CardTitle>Deliverables Summary</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">
-                Target: {job.target_deliverable} {job.deliverable_type}
-              </p>
-              <p className="text-muted-foreground mt-2">
-                No deliverables recorded yet. Start tracking worker output.
-              </p>
+              <div className="mb-4">
+                <p className="text-muted-foreground">
+                  Target: {job.target_deliverable} {job.deliverable_type}
+                </p>
+                <p className="text-muted-foreground">
+                  Total Recorded: {recentDeliverables.reduce((sum, d) => sum + d.quantity, 0)} {job.deliverable_type}
+                </p>
+              </div>
+              {recentDeliverables.length > 0 ? (
+                <div className="space-y-3">
+                  {recentDeliverables.map((record) => (
+                    <div key={record.id} className="flex justify-between items-center p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">{record.workers?.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(record.deliverable_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium">{record.quantity} {job.deliverable_type}</p>
+                        {record.notes && (
+                          <p className="text-xs text-muted-foreground">{record.notes}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  No deliverables recorded yet. Start tracking worker output.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
