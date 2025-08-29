@@ -26,7 +26,7 @@ interface RecordDeliverablesDialogProps {
 export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType, deliverableFrequency }: RecordDeliverablesDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
-  const [deliverables, setDeliverables] = useState<{ [workerId: number]: string }>({});
+  const [deliverables, setDeliverables] = useState<{ [workerId: string]: string }>({});
   const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -44,7 +44,7 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
     const deliverableRecords = Object.entries(deliverables)
       .filter(([_, value]) => value && parseFloat(value) > 0)
       .map(([workerId, count]) => ({
-        workerId: parseInt(workerId),
+        workerId,
         count: parseFloat(count),
         date: selectedDate,
       }));
@@ -73,7 +73,7 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
     setDeliverables({});
   };
 
-  const updateWorkerDeliverables = (workerId: number, value: string) => {
+  const updateWorkerDeliverables = (workerId: string, value: string) => {
     setDeliverables(prev => ({
       ...prev,
       [workerId]: value

@@ -24,7 +24,7 @@ interface RecordAttendanceDialogProps {
 export function RecordAttendanceDialog({ children, jobId, workers }: RecordAttendanceDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
-  const [attendance, setAttendance] = useState<{ [workerId: number]: boolean }>({});
+  const [attendance, setAttendance] = useState<{ [workerId: string]: boolean }>({});
   const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -40,7 +40,7 @@ export function RecordAttendanceDialog({ children, jobId, workers }: RecordAtten
     }
 
     const attendanceRecords = Object.entries(attendance).map(([workerId, present]) => ({
-      workerId: parseInt(workerId),
+      workerId,
       present,
       date: selectedDate,
     }));
@@ -60,7 +60,7 @@ export function RecordAttendanceDialog({ children, jobId, workers }: RecordAtten
     setAttendance({});
   };
 
-  const toggleWorkerAttendance = (workerId: number) => {
+  const toggleWorkerAttendance = (workerId: string) => {
     setAttendance(prev => ({
       ...prev,
       [workerId]: !prev[workerId]
