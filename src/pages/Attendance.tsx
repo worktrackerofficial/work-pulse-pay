@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Calendar, Clock, CheckCircle, XCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RecordAttendanceDialog } from "@/components/attendance/RecordAttendanceDialog";
@@ -20,8 +20,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
 
-// Mock data
+interface AttendanceRecord {
+  id: string;
+  attendance_date: string;
+  status: string;
+  notes?: string;
+  workers: {
+    name: string;
+  };
+  jobs: {
+    name: string;
+  };
+}
+
 const attendanceRecords = [
   {
     id: 1,
@@ -71,11 +84,37 @@ const attendanceRecords = [
 
 export default function Attendance() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState("2024-01-15");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredRecords = attendanceRecords.filter(record =>
-    record.workerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    record.job.toLowerCase().includes(searchTerm.toLowerCase())
+  useEffect(() => {
+    fetchAttendanceRecords();
+  }, [selectedDate]);
+
+  const fetchAttendanceRecords = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select(`
+          *,
+          workers(name),
+          jobs(name)
+        `)
+        .eq('attendance_date', selectedDate);
+
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (error) {
+      console.error('Error fetching attendance:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredRecords = records.filter(record =>
+    record.workers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    record.jobs?.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusBadge = (status: string) => {
@@ -116,16 +155,12 @@ export default function Attendance() {
                 className="pl-10"
               />
             </div>
-            <Select value={selectedDate} onValueChange={setSelectedDate}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select date" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="2024-01-15">January 15, 2024</SelectItem>
-                <SelectItem value="2024-01-14">January 14, 2024</SelectItem>
-                <SelectItem value="2024-01-13">January 13, 2024</SelectItem>
-              </SelectContent>
-            </Select>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="px-3 py-2 border border-input rounded-md bg-background text-foreground"
+            />
           </div>
         </CardContent>
       </Card>
@@ -137,7 +172,9 @@ export default function Attendance() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Present Today</p>
-                <p className="text-2xl font-bold text-success">3</p>
+                <p className="text-2xl font-bold text-success">
+                  {records.filter(r => r.status === 'present').length}
+                </p>
               </div>
               <CheckCircle className="h-8 w-8 text-success" />
             </div>
@@ -148,7 +185,9 @@ export default function Attendance() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Absent Today</p>
-                <p className="text-2xl font-bold text-destructive">1</p>
+                <p className="text-2xl font-bold text-destructive">
+                  {records.filter(r => r.status === 'absent').length}
+                </p>
               </div>
               <XCircle className="h-8 w-8 text-destructive" />
             </div>
@@ -158,15 +197,17 @@ export default function Attendance() {
           <CardContent className="pt-6">
             <div>
               <p className="text-sm text-muted-foreground">Attendance Rate</p>
-              <p className="text-2xl font-bold text-primary">75%</p>
+              <p className="text-2xl font-bold text-primary">
+                {records.length > 0 ? Math.round((records.filter(r => r.status === 'present').length / records.length) * 100) : 0}%
+              </p>
             </div>
           </CardContent>
         </Card>
         <Card className="shadow-card">
           <CardContent className="pt-6">
             <div>
-              <p className="text-sm text-muted-foreground">Target Achievement</p>
-              <p className="text-2xl font-bold text-primary">92%</p>
+              <p className="text-sm text-muted-foreground">Total Records</p>
+              <p className="text-2xl font-bold text-primary">{records.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -194,34 +235,29 @@ export default function Attendance() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRecords.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="font-medium">{record.workerName}</TableCell>
-                  <TableCell>{record.job}</TableCell>
-                  <TableCell>{record.clockIn || "-"}</TableCell>
-                  <TableCell>{record.clockOut || "-"}</TableCell>
-                  <TableCell>{getStatusBadge(record.status)}</TableCell>
-                  <TableCell>
-                    {record.deliverables}/{record.target}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 bg-muted rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full ${
-                            (record.deliverables / record.target) >= 1 ? 'bg-success' :
-                            (record.deliverables / record.target) >= 0.8 ? 'bg-warning' : 'bg-destructive'
-                          }`}
-                          style={{ width: `${Math.min(100, (record.deliverables / record.target) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        {Math.round((record.deliverables / record.target) * 100)}%
-                      </span>
-                    </div>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center">Loading...</TableCell>
+                </TableRow>
+              ) : filteredRecords.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    No attendance records found for {selectedDate}
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredRecords.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell className="font-medium">{record.workers?.name}</TableCell>
+                    <TableCell>{record.jobs?.name}</TableCell>
+                    <TableCell>-</TableCell>
+                    <TableCell>-</TableCell>
+                    <TableCell>{getStatusBadge(record.status)}</TableCell>
+                    <TableCell>-</TableCell>
+                    <TableCell>-</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>

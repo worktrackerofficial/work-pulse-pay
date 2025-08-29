@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Worker {
   id: string;
@@ -27,7 +28,7 @@ export function RecordAttendanceDialog({ children, jobId, workers }: RecordAtten
   const [attendance, setAttendance] = useState<{ [workerId: string]: boolean }>({});
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedDate) {
@@ -40,24 +41,36 @@ export function RecordAttendanceDialog({ children, jobId, workers }: RecordAtten
     }
 
     const attendanceRecords = Object.entries(attendance).map(([workerId, present]) => ({
-      workerId,
-      present,
-      date: selectedDate,
+      worker_id: workerId,
+      job_id: jobId,
+      attendance_date: selectedDate.toISOString().split('T')[0],
+      status: (present ? 'present' : 'absent') as 'present' | 'absent'
     }));
 
-    // Here you would normally save to database
-    console.log("Recording attendance:", { jobId, date: selectedDate, attendance: attendanceRecords });
+    try {
+      const { error } = await supabase
+        .from('attendance')
+        .insert(attendanceRecords);
 
-    const presentCount = Object.values(attendance).filter(Boolean).length;
-    toast({
-      title: "Attendance Recorded",
-      description: `${presentCount} of ${workers.length} workers marked present for ${format(selectedDate, "PPP")}.`,
-    });
+      if (error) throw error;
 
-    setOpen(false);
-    // Reset form
-    setSelectedDate(undefined);
-    setAttendance({});
+      const presentCount = Object.values(attendance).filter(Boolean).length;
+      toast({
+        title: "Attendance Recorded",
+        description: `${presentCount} of ${workers.length} workers marked present for ${format(selectedDate, "PPP")}.`,
+      });
+
+      setOpen(false);
+      setSelectedDate(undefined);
+      setAttendance({});
+    } catch (error) {
+      console.error('Error recording attendance:', error);
+      toast({
+        title: "Error",
+        description: "Failed to record attendance. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const toggleWorkerAttendance = (workerId: string) => {

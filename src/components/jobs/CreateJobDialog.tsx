@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -291,6 +292,45 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
               />
             </div>
           )}
+
+          {formData.payStructure === 'commission_adjusted' && (
+            <div className="space-y-2">
+              <Label htmlFor="commissionPerItem">Commission Per Item ($)</Label>
+              <Input
+                id="commissionPerItem"
+                type="number"
+                step="0.01"
+                value={formData.commissionPerItem}
+                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: parseFloat(e.target.value) || 0 }))}
+                placeholder="2.50"
+              />
+              <p className="text-xs text-muted-foreground">
+                Commission will be adjusted based on days worked vs expected days
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Excluded Days</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
+                <div key={day} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={day}
+                    checked={formData.excludedDays.includes(day)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setFormData(prev => ({ ...prev, excludedDays: [...prev.excludedDays, day] }));
+                      } else {
+                        setFormData(prev => ({ ...prev, excludedDays: prev.excludedDays.filter(d => d !== day) }));
+                      }
+                    }}
+                  />
+                  <Label htmlFor={day} className="text-sm">{day}</Label>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="flex gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">

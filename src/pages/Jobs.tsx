@@ -40,9 +40,11 @@ export default function Jobs() {
         .from('jobs')
         .select(`
           *,
-          job_workers!inner(count)
-        `)
-        .eq('job_workers.is_active', true);
+          job_workers!left(
+            id,
+            is_active
+          )
+        `);
 
       if (error) {
         console.error('Error fetching jobs:', error);
@@ -52,7 +54,7 @@ export default function Jobs() {
       // Transform data to include worker count
       const transformedJobs = data?.map(job => ({
         ...job,
-        worker_count: job.job_workers?.length || 0
+        worker_count: job.job_workers?.filter(jw => jw.is_active).length || 0
       })) || [];
 
       setJobs(transformedJobs);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DollarSign, Calculator, Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+
+interface PayoutData {
+  id: string;
+  worker_name: string;
+  job_name: string;
+  days_worked: number;
+  total_days: number;
+  deliverables: number;
+  target_deliverables: number;
+  base_pay: number;
+  commission: number;
+  total_payout: number;
+  status: string;
+  payment_type: string;
+}
 
 // Mock data
 const payouts = [
@@ -78,6 +94,24 @@ const payouts = [
 export default function Payouts() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [payoutsData, setPayoutsData] = useState<PayoutData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchPayoutsData();
+  }, []);
+
+  const fetchPayoutsData = async () => {
+    try {
+      // This would be replaced with actual calculation logic
+      // For now, using mock data but showing integration pattern
+      setPayoutsData([]);
+    } catch (error) {
+      console.error('Error fetching payouts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredPayouts = payouts.filter(payout => {
     const matchesSearch = payout.worker.toLowerCase().includes(searchTerm.toLowerCase()) ||

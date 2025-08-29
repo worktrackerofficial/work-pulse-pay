@@ -142,36 +142,56 @@ export function AddWorkerDialog({ children, jobId, onWorkerAdded }: AddWorkerDia
 
           <div className="space-y-2">
             <Label htmlFor="role">Role *</Label>
-            <Select value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Packer">Packer</SelectItem>
-                <SelectItem value="Quality Check">Quality Check</SelectItem>
-                <SelectItem value="Supervisor">Supervisor</SelectItem>
-                <SelectItem value="Loader">Loader</SelectItem>
-                <SelectItem value="Assistant">Assistant</SelectItem>
-                <SelectItem value="Technician">Technician</SelectItem>
-                <SelectItem value="Operator">Operator</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              <Select value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Packer">Packer</SelectItem>
+                  <SelectItem value="Quality Check">Quality Check</SelectItem>
+                  <SelectItem value="Supervisor">Supervisor</SelectItem>
+                  <SelectItem value="Loader">Loader</SelectItem>
+                  <SelectItem value="Assistant">Assistant</SelectItem>
+                  <SelectItem value="Technician">Technician</SelectItem>
+                  <SelectItem value="Operator">Operator</SelectItem>
+                  <SelectItem value="Custom">Custom Role</SelectItem>
+                </SelectContent>
+              </Select>
+              {formData.role === 'Custom' && (
+                <Input
+                  placeholder="Enter custom role"
+                  value={formData.role === 'Custom' ? '' : formData.role}
+                  onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
+                />
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="department">Department</Label>
-            <Select value={formData.department} onValueChange={(value) => setFormData(prev => ({ ...prev, department: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Production">Production</SelectItem>
-                <SelectItem value="Quality Assurance">Quality Assurance</SelectItem>
-                <SelectItem value="Warehouse">Warehouse</SelectItem>
-                <SelectItem value="Logistics">Logistics</SelectItem>
-                <SelectItem value="Maintenance">Maintenance</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              <Select value={formData.department} onValueChange={(value) => setFormData(prev => ({ ...prev, department: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Production">Production</SelectItem>
+                  <SelectItem value="Quality Assurance">Quality Assurance</SelectItem>
+                  <SelectItem value="Warehouse">Warehouse</SelectItem>
+                  <SelectItem value="Logistics">Logistics</SelectItem>
+                  <SelectItem value="Maintenance">Maintenance</SelectItem>
+                  <SelectItem value="Custom">Custom Department</SelectItem>
+                </SelectContent>
+              </Select>
+              {formData.department === 'Custom' && (
+                <Input
+                  placeholder="Enter custom department"
+                  value={formData.department === 'Custom' ? '' : formData.department}
+                  onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+                />
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
