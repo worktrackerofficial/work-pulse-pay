@@ -103,9 +103,43 @@ export default function Payouts() {
 
   const fetchPayoutsData = async () => {
     try {
-      // This would be replaced with actual calculation logic
-      // For now, using mock data but showing integration pattern
-      setPayoutsData([]);
+      // Fetch attendance data to calculate payouts
+      const { data: attendanceData, error: attendanceError } = await supabase
+        .from('attendance')
+        .select(`
+          worker_id,
+          attendance_date,
+          status,
+          workers (name),
+          jobs (
+            name,
+            pay_structure,
+            flat_rate,
+            commission_per_item,
+            hourly_rate,
+            target_deliverable
+          )
+        `);
+
+      if (attendanceError) throw attendanceError;
+
+      // Fetch deliverables data
+      const { data: deliverablesData, error: deliverablesError } = await supabase
+        .from('deliverables')
+        .select(`
+          worker_id,
+          quantity,
+          deliverable_date,
+          workers (name),
+          jobs (name)
+        `);
+
+      if (deliverablesError) throw deliverablesError;
+
+      // Calculate actual payouts
+      const calculatedPayouts = calculatePayouts(attendanceData || [], deliverablesData || []);
+      setPayoutsData(calculatedPayouts);
+      
     } catch (error) {
       console.error('Error fetching payouts:', error);
     } finally {
@@ -113,9 +147,79 @@ export default function Payouts() {
     }
   };
 
-  const filteredPayouts = payouts.filter(payout => {
-    const matchesSearch = payout.worker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         payout.job.toLowerCase().includes(searchTerm.toLowerCase());
+  const calculatePayouts = (attendance: any[], deliverables: any[]): PayoutData[] => {
+    const workerMap = new Map();
+    
+    // Process attendance data
+    attendance.forEach(record => {
+      const key = record.worker_id;
+      if (!workerMap.has(key)) {
+        workerMap.set(key, {
+          id: key,
+          worker_name: record.workers?.name || 'Unknown',
+          job_name: record.jobs?.name || 'Unknown',
+          days_worked: 0,
+          total_days: 0,
+          deliverables: 0,
+          target_deliverables: record.jobs?.target_deliverable || 0,
+          base_pay: 0,
+          commission: 0,
+          total_payout: 0,
+          status: 'pending',
+          payment_type: record.jobs?.pay_structure || 'commission',
+          pay_structure: record.jobs?.pay_structure,
+          flat_rate: record.jobs?.flat_rate || 0,
+          commission_per_item: record.jobs?.commission_per_item || 0,
+          hourly_rate: record.jobs?.hourly_rate || 0
+        });
+      }
+      
+      const worker = workerMap.get(key);
+      worker.total_days++;
+      if (record.status === 'present') {
+        worker.days_worked++;
+      }
+    });
+
+    // Process deliverables data
+    deliverables.forEach(record => {
+      const key = record.worker_id;
+      if (workerMap.has(key)) {
+        const worker = workerMap.get(key);
+        worker.deliverables += record.quantity;
+      }
+    });
+
+    // Calculate payouts
+    return Array.from(workerMap.values()).map(worker => {
+      let basePay = 0;
+      let commission = 0;
+      
+      switch (worker.pay_structure) {
+        case 'flat_rate':
+          basePay = worker.flat_rate * worker.days_worked;
+          break;
+        case 'commission':
+          commission = worker.commission_per_item * worker.deliverables;
+          break;
+        case 'hourly':
+          basePay = worker.hourly_rate * worker.days_worked * 8; // 8 hours per day
+          break;
+      }
+      
+      worker.base_pay = basePay;
+      worker.commission = commission;
+      worker.total_payout = basePay + commission;
+      
+      return worker;
+    });
+  };
+
+  const filteredPayouts = (payoutsData.length > 0 ? payoutsData : payouts).filter(payout => {
+    const workerName = 'worker' in payout ? payout.worker : payout.worker_name;
+    const jobName = 'job' in payout ? payout.job : payout.job_name;
+    const matchesSearch = workerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         jobName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || payout.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -241,54 +345,75 @@ export default function Payouts() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPayouts.map((payout) => (
-                <TableRow key={payout.id}>
-                  <TableCell className="font-medium">{payout.worker}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{payout.job}</p>
-                      <p className="text-xs text-muted-foreground">{payout.paymentType}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>{payout.period}</TableCell>
-                  <TableCell>
-                    {payout.daysWorked}/{payout.totalDays} days
-                  </TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>{payout.deliverables}/{payout.targetDeliverables}</span>
-                        <span>{Math.round((payout.deliverables / payout.targetDeliverables) * 100)}%</span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-1">
-                        <div 
-                          className={`h-1 rounded-full ${
-                            (payout.deliverables / payout.targetDeliverables) >= 1 ? 'bg-success' :
-                            (payout.deliverables / payout.targetDeliverables) >= 0.8 ? 'bg-warning' : 'bg-destructive'
-                          }`}
-                          style={{ width: `${Math.min(100, (payout.deliverables / payout.targetDeliverables) * 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>${payout.basePay}</TableCell>
-                  <TableCell>${payout.commission}</TableCell>
-                  <TableCell className="font-bold">${payout.totalPayout}</TableCell>
-                  <TableCell>{getStatusBadge(payout.status)}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="outline" size="sm">
-                        Details
-                      </Button>
-                      {payout.status === 'pending' && (
-                        <Button size="sm" className="bg-primary">
-                          Approve
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center py-8">Loading payouts...</TableCell>
                 </TableRow>
-              ))}
+              ) : filteredPayouts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No payouts found</TableCell>
+                </TableRow>
+              ) : (
+                filteredPayouts.map((payout) => {
+                  const workerName = 'worker' in payout ? payout.worker : payout.worker_name;
+                  const jobName = 'job' in payout ? payout.job : payout.job_name;
+                  const daysWorked = 'daysWorked' in payout ? payout.daysWorked : payout.days_worked;
+                  const totalDays = 'totalDays' in payout ? payout.totalDays : payout.total_days;
+                  const targetDeliverables = 'targetDeliverables' in payout ? payout.targetDeliverables : payout.target_deliverables;
+                  const basePay = 'basePay' in payout ? payout.basePay : payout.base_pay;
+                  const totalPayout = 'totalPayout' in payout ? payout.totalPayout : payout.total_payout;
+                  const paymentType = 'paymentType' in payout ? payout.paymentType : payout.payment_type;
+                  
+                  return (
+                    <TableRow key={payout.id}>
+                      <TableCell className="font-medium">{workerName}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{jobName}</p>
+                          <p className="text-xs text-muted-foreground">{paymentType}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>{'period' in payout ? payout.period : 'Current Period'}</TableCell>
+                      <TableCell>
+                        {daysWorked}/{totalDays} days
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span>{payout.deliverables}/{targetDeliverables}</span>
+                            <span>{Math.round((payout.deliverables / targetDeliverables) * 100)}%</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1">
+                            <div 
+                              className={`h-1 rounded-full ${
+                                (payout.deliverables / targetDeliverables) >= 1 ? 'bg-success' :
+                                (payout.deliverables / targetDeliverables) >= 0.8 ? 'bg-warning' : 'bg-destructive'
+                              }`}
+                              style={{ width: `${Math.min(100, (payout.deliverables / targetDeliverables) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>${basePay}</TableCell>
+                      <TableCell>${payout.commission}</TableCell>
+                      <TableCell className="font-bold">${totalPayout}</TableCell>
+                      <TableCell>{getStatusBadge(payout.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm">
+                            Details
+                          </Button>
+                          {payout.status === 'pending' && (
+                            <Button size="sm" className="bg-primary">
+                              Approve
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </CardContent>
