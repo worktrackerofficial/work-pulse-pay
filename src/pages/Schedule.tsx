@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Calendar, Plus, Users, Clock } from "lucide-react";
+import { Calendar, Plus, Users, Clock, Edit, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Schedule {
   id: string;
@@ -18,6 +19,7 @@ interface Schedule {
 export default function Schedule() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchSchedules();
@@ -67,11 +69,39 @@ export default function Schedule() {
   const getWorkDays = (excludedDays: string[]) => {
     return getDaysOfWeek().filter(day => !excludedDays.includes(day.toLowerCase()));
   };
+
+  const createSchedule = () => {
+    toast({
+      title: "Create Schedule",
+      description: "Schedule creation feature coming soon!",
+    });
+  };
+
+  const editSchedule = (scheduleId: string) => {
+    toast({
+      title: "Edit Schedule",
+      description: `Editing schedule ${scheduleId} - feature coming soon!`,
+    });
+  };
+
+  const manageWorkers = (scheduleId: string) => {
+    toast({
+      title: "Manage Workers",
+      description: `Managing workers for schedule ${scheduleId} - feature coming soon!`,
+    });
+  };
+
+  const viewCalendar = (scheduleId: string) => {
+    toast({
+      title: "View Calendar",
+      description: `Calendar view for schedule ${scheduleId} - feature coming soon!`,
+    });
+  };
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Schedule Management</h1>
-        <Button className="bg-gradient-to-r from-primary to-primary-glow">
+        <Button className="bg-gradient-to-r from-primary to-primary-glow" onClick={createSchedule}>
           <Plus className="mr-2 h-4 w-4" />
           Create Schedule
         </Button>
@@ -157,13 +187,16 @@ export default function Schedule() {
                   </div>
 
                   <div className="flex gap-2 pt-2 border-t">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => editSchedule(schedule.id)}>
+                      <Edit className="mr-1 h-3 w-3" />
                       Edit Schedule
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => manageWorkers(schedule.id)}>
+                      <Users className="mr-1 h-3 w-3" />
                       Manage Workers
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => viewCalendar(schedule.id)}>
+                      <Calendar className="mr-1 h-3 w-3" />
                       View Calendar
                     </Button>
                   </div>

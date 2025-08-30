@@ -37,6 +37,7 @@ export default function Reports() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState("all-jobs");
   const [selectedPeriod, setSelectedPeriod] = useState("this-month");
+  const [selectedReportType, setSelectedReportType] = useState("payout");
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalPayouts: 0,
@@ -48,7 +49,7 @@ export default function Reports() {
   useEffect(() => {
     fetchJobs();
     fetchReports();
-  }, [selectedJob, selectedPeriod]);
+  }, [selectedJob, selectedPeriod, selectedReportType]);
 
   const fetchJobs = async () => {
     try {
@@ -68,32 +69,44 @@ export default function Reports() {
     try {
       setLoading(true);
       
-      // Fetch attendance, deliverables, and worker data
-      const { data: attendanceData, error: attendanceError } = await supabase
+      // Build query with filters
+      let attendanceQuery = supabase
         .from('attendance')
         .select(`
           worker_id,
           attendance_date,
           status,
           workers (name),
-          jobs (name, pay_structure, flat_rate, commission_per_item, hourly_rate)
+          jobs (name, pay_structure, flat_rate, commission_per_item, hourly_rate, id)
         `)
         .gte('attendance_date', getDateRange().start)
         .lte('attendance_date', getDateRange().end);
 
+      if (selectedJob !== 'all-jobs') {
+        attendanceQuery = attendanceQuery.eq('jobs.id', selectedJob);
+      }
+
+      const { data: attendanceData, error: attendanceError } = await attendanceQuery;
+
       if (attendanceError) throw attendanceError;
 
-      const { data: deliverablesData, error: deliverablesError } = await supabase
+      let deliverablesQuery = supabase
         .from('deliverables')
         .select(`
           worker_id,
           quantity,
           deliverable_date,
           workers (name),
-          jobs (name)
+          jobs (name, id)
         `)
         .gte('deliverable_date', getDateRange().start)
         .lte('deliverable_date', getDateRange().end);
+
+      if (selectedJob !== 'all-jobs') {
+        deliverablesQuery = deliverablesQuery.eq('jobs.id', selectedJob);
+      }
+
+      const { data: deliverablesData, error: deliverablesError } = await deliverablesQuery;
 
       if (deliverablesError) throw deliverablesError;
 
@@ -111,13 +124,58 @@ export default function Reports() {
 
   const getDateRange = () => {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    let start: Date, end: Date;
+
+    switch (selectedPeriod) {
+      case 'this-week':
+        start = new Date(now);
+        start.setDate(now.getDate() - now.getDay());
+        end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        break;
+      case 'last-month':
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        start = new Date(now.getFullYear(), quarter * 3, 1);
+        end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+        break;
+      default: // this-month
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
     
     return {
       start: start.toISOString().split('T')[0],
       end: end.toISOString().split('T')[0]
     };
+  };
+
+  const exportToExcel = () => {
+    const csv = [
+      ['Worker', 'Job', 'Period', 'Days Worked', 'Deliverables', 'Base Pay', 'Commission', 'Total Payout', 'Status'],
+      ...reports.map(report => [
+        report.worker_name,
+        report.job_name,
+        report.period,
+        `${report.days_worked}/${report.total_days}`,
+        report.deliverables,
+        report.base_pay.toFixed(2),
+        report.commission.toFixed(2),
+        report.total_payout.toFixed(2),
+        report.status
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedReportType}-report-${selectedPeriod}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const calculateReports = (attendance: any[], deliverables: any[]): ReportData[] => {
@@ -213,11 +271,11 @@ export default function Reports() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Reports & Analytics</h1>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => fetchReports()}>
             <Calendar className="mr-2 h-4 w-4" />
-            Date Range
+            Refresh Data
           </Button>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow">
+          <Button className="bg-gradient-to-r from-primary to-primary-glow" onClick={exportToExcel}>
             <Download className="mr-2 h-4 w-4" />
             Export to Excel
           </Button>
@@ -239,7 +297,7 @@ export default function Reports() {
                 ))}
               </SelectContent>
             </Select>
-            <Select defaultValue="this-month">
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Select Period" />
               </SelectTrigger>
@@ -250,7 +308,7 @@ export default function Reports() {
                 <SelectItem value="quarter">This Quarter</SelectItem>
               </SelectContent>
             </Select>
-            <Select defaultValue="payout">
+            <Select value={selectedReportType} onValueChange={setSelectedReportType}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Report Type" />
               </SelectTrigger>

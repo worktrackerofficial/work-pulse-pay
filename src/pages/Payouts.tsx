@@ -224,6 +224,62 @@ export default function Payouts() {
     return matchesSearch && matchesStatus;
   });
 
+  const recalculatePayouts = () => {
+    fetchPayoutsData();
+  };
+
+  const exportReport = () => {
+    const csv = [
+      ['Worker', 'Job', 'Period', 'Days Worked', 'Total Days', 'Deliverables', 'Target', 'Base Pay', 'Commission', 'Total Payout', 'Status'],
+      ...filteredPayouts.map(payout => {
+        const workerName = 'worker' in payout ? payout.worker : payout.worker_name;
+        const jobName = 'job' in payout ? payout.job : payout.job_name;
+        const daysWorked = 'daysWorked' in payout ? payout.daysWorked : payout.days_worked;
+        const totalDays = 'totalDays' in payout ? payout.totalDays : payout.total_days;
+        const targetDeliverables = 'targetDeliverables' in payout ? payout.targetDeliverables : payout.target_deliverables;
+        const basePay = 'basePay' in payout ? payout.basePay : payout.base_pay;
+        const totalPayout = 'totalPayout' in payout ? payout.totalPayout : payout.total_payout;
+
+        return [
+          workerName,
+          jobName,
+          'period' in payout ? payout.period : 'Current Period',
+          daysWorked,
+          totalDays,
+          payout.deliverables,
+          targetDeliverables,
+          basePay,
+          payout.commission,
+          totalPayout,
+          payout.status
+        ];
+      })
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payouts-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const approvePayout = async (payoutId: string) => {
+    // In a real app, you'd update the payout status in the database
+    // For now, just update the local state
+    setPayoutsData(prev => prev.map(payout => 
+      payout.id === payoutId 
+        ? { ...payout, status: 'approved' }
+        : payout
+    ));
+  };
+
+  const viewDetails = (payout: any) => {
+    // In a real app, this would open a detailed view
+    alert(`Detailed view for ${payout.worker_name || payout.worker}`);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
@@ -245,11 +301,11 @@ export default function Payouts() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Payouts Management</h1>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={recalculatePayouts}>
             <Calculator className="mr-2 h-4 w-4" />
             Calculate Payouts
           </Button>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow">
+          <Button className="bg-gradient-to-r from-primary to-primary-glow" onClick={exportReport}>
             <Download className="mr-2 h-4 w-4" />
             Export Report
           </Button>
@@ -400,11 +456,11 @@ export default function Payouts() {
                       <TableCell>{getStatusBadge(payout.status)}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => viewDetails(payout)}>
                             Details
                           </Button>
                           {payout.status === 'pending' && (
-                            <Button size="sm" className="bg-primary">
+                            <Button size="sm" className="bg-primary" onClick={() => approvePayout(payout.id.toString())}>
                               Approve
                             </Button>
                           )}
