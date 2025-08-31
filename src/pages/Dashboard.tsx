@@ -7,7 +7,8 @@ import {
   TrendingUp,
   Calendar,
   AlertTriangle,
-  Plus
+  Plus,
+  CheckCircle
 } from "lucide-react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
+import { useTasks, Task } from "@/hooks/useTasks";
+import { useToast } from "@/hooks/use-toast";
 
 interface ActivityLog {
   id: string;
@@ -37,14 +40,10 @@ interface DashboardStats {
   pendingPayouts: string;
 }
 
-const upcomingTasks = [
-  { id: 1, task: "Process weekly payouts", due: "Tomorrow", priority: "high" },
-  { id: 2, task: "Update deliverable targets", due: "2 days", priority: "medium" },
-  { id: 3, task: "Review attendance reports", due: "3 days", priority: "low" },
-];
-
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { tasks, loading: tasksLoading, markTaskCompleted, getUpcomingTasks } = useTasks();
   const [stats, setStats] = useState<DashboardStats>({
     activeWorkers: 0,
     activeJobs: 0,
@@ -54,6 +53,8 @@ export default function Dashboard() {
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const upcomingTasks = getUpcomingTasks();
+
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -61,14 +62,25 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     try {
       // Fetch stats
-      const [workersResult, jobsResult, activityResult] = await Promise.all([
+      const [workersResult, jobsResult, activityResult, attendanceResult] = await Promise.all([
         supabase.from('workers').select('*', { count: 'exact' }).eq('status', 'active'),
         supabase.from('jobs').select('*', { count: 'exact' }).eq('status', 'active'),
-        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(4)
+        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(4),
+        supabase.from('attendance').select('status', { count: 'exact' }).gte('attendance_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
       ]);
 
-      // Calculate attendance rate (mock for now)
-      const attendanceRate = "94.2%";
+      // Calculate actual attendance rate
+      const { data: presentCount } = await supabase
+        .from('attendance')
+        .select('*', { count: 'exact' })
+        .eq('status', 'present')
+        .gte('attendance_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+
+      const totalAttendance = attendanceResult.count || 0;
+      const presentAttendance = (presentCount as any)?.count || 0;
+      const attendanceRate = totalAttendance > 0 ? `${Math.round((presentAttendance / totalAttendance) * 100)}%` : "0%";
+
+      // Calculate pending payouts (mock calculation)
       const pendingPayouts = "$18,450";
 
       setStats({
@@ -86,6 +98,14 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTaskComplete = (task: Task) => {
+    markTaskCompleted(task.id);
+    toast({
+      title: "Task completed",
+      description: `"${task.title}" has been marked as completed.`,
+    });
   };
 
   return (
@@ -185,26 +205,44 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {upcomingTasks.map((task) => (
-                <div key={task.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <AlertTriangle className={`h-4 w-4 ${
-                      task.priority === 'high' ? 'text-destructive' : 
-                      task.priority === 'medium' ? 'text-warning' : 'text-muted-foreground'
-                    }`} />
-                    <div>
-                      <p className="text-sm font-medium">{task.task}</p>
-                      <p className="text-xs text-muted-foreground">Due in {task.due}</p>
+              {tasksLoading ? (
+                <p className="text-center text-muted-foreground">Loading tasks...</p>
+              ) : upcomingTasks.length === 0 ? (
+                <p className="text-center text-muted-foreground">No upcoming tasks</p>
+              ) : (
+                upcomingTasks.map((task) => (
+                  <div key={task.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <AlertTriangle className={`h-4 w-4 ${
+                        task.priority === 'high' ? 'text-destructive' : 
+                        task.priority === 'medium' ? 'text-warning' : 'text-muted-foreground'
+                      }`} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{task.title}</p>
+                        <p className="text-xs text-muted-foreground">{task.description}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Due: {formatDistanceToNow(new Date(task.due_date), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        task.priority === 'high' ? 'destructive' : 
+                        task.priority === 'medium' ? 'default' : 'secondary'
+                      }>
+                        {task.priority}
+                      </Badge>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleTaskComplete(task)}
+                      >
+                        <CheckCircle className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
-                  <Badge variant={
-                    task.priority === 'high' ? 'destructive' : 
-                    task.priority === 'medium' ? 'default' : 'secondary'
-                  }>
-                    {task.priority}
-                  </Badge>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>

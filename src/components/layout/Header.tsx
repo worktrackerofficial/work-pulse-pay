@@ -1,6 +1,9 @@
 import { Bell, Settings, User, Clock, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,12 +19,33 @@ import {
 } from "@/components/ui/popover";
 
 export function Header() {
+  const navigate = useNavigate();
+  const { signOut, user } = useAuth();
+  const { toast } = useToast();
+
   // Mock deliverable reminders
   const reminders = [
     { id: 1, job: "Warehouse Team Alpha", type: "Daily", dueDate: "Today", overdue: false },
     { id: 2, job: "Delivery Squad Beta", type: "Weekly", dueDate: "Tomorrow", overdue: false },
     { id: 3, job: "Production Line C", type: "Daily", dueDate: "Yesterday", overdue: true },
   ];
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast({
+        title: "Signed out",
+        description: "You have been successfully signed out.",
+      });
+      navigate("/auth");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to sign out. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -77,13 +101,13 @@ export function Header() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>Admin Account</DropdownMenuLabel>
+              <DropdownMenuLabel>{user?.email || "User Account"}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/settings")}>
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSignOut}>
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>

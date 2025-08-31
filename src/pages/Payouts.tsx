@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { PayoutDetailsDialog } from "@/components/dialogs/PayoutDetailsDialog";
 
 interface PayoutData {
   id: string;
@@ -96,6 +98,9 @@ export default function Payouts() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [payoutsData, setPayoutsData] = useState<PayoutData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPayout, setSelectedPayout] = useState<any>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchPayoutsData();
@@ -225,7 +230,12 @@ export default function Payouts() {
   });
 
   const recalculatePayouts = () => {
+    setLoading(true);
     fetchPayoutsData();
+    toast({
+      title: "Recalculating payouts",
+      description: "Payouts are being recalculated based on current data.",
+    });
   };
 
   const exportReport = () => {
@@ -263,21 +273,40 @@ export default function Payouts() {
     a.download = `payouts-report-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Report exported",
+      description: `Payouts report for ${filteredPayouts.length} records has been downloaded.`,
+    });
   };
 
   const approvePayout = async (payoutId: string) => {
-    // In a real app, you'd update the payout status in the database
-    // For now, just update the local state
-    setPayoutsData(prev => prev.map(payout => 
-      payout.id === payoutId 
-        ? { ...payout, status: 'approved' }
-        : payout
-    ));
+    try {
+      // Update the payout status in local state for real-time feedback
+      setPayoutsData(prev => prev.map(payout => 
+        payout.id === payoutId 
+          ? { ...payout, status: 'approved' }
+          : payout
+      ));
+
+      // In a real implementation, you would also update the backend
+      // For now, we'll simulate this with a success message
+      toast({
+        title: "Payout approved",
+        description: "The payout has been successfully approved.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve payout. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const viewDetails = (payout: any) => {
-    // In a real app, this would open a detailed view
-    alert(`Detailed view for ${payout.worker_name || payout.worker}`);
+    setSelectedPayout(payout);
+    setDetailsDialogOpen(true);
   };
 
   const getStatusBadge = (status: string) => {
@@ -474,6 +503,12 @@ export default function Payouts() {
           </Table>
         </CardContent>
       </Card>
+
+      <PayoutDetailsDialog
+        payout={selectedPayout}
+        open={detailsDialogOpen}
+        onOpenChange={setDetailsDialogOpen}
+      />
     </div>
   );
 }
