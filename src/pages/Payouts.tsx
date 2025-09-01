@@ -108,15 +108,62 @@ export default function Payouts() {
 
   const fetchPayoutsData = async () => {
     try {
-      // Fetch attendance data to calculate payouts
+      // First try to fetch stored payouts
+      const { data: storedPayouts, error: payoutsError } = await supabase
+        .from('payouts')
+        .select('*');
+
+      if (payoutsError) throw payoutsError;
+
+      if (storedPayouts && storedPayouts.length > 0) {
+        // Fetch worker and job names separately
+        const workerIds = [...new Set(storedPayouts.map(p => p.worker_id))];
+        const jobIds = [...new Set(storedPayouts.map(p => p.job_id))];
+
+        const { data: workers } = await supabase
+          .from('workers')
+          .select('id, name')
+          .in('id', workerIds);
+
+        const { data: jobs } = await supabase
+          .from('jobs')
+          .select('id, name')
+          .in('id', jobIds);
+
+        const workerMap = new Map(workers?.map(w => [w.id, w.name]) || []);
+        const jobMap = new Map(jobs?.map(j => [j.id, j.name]) || []);
+
+        // Use stored payouts with proper formatting
+        const formattedPayouts = storedPayouts.map(payout => ({
+          id: payout.id,
+          worker_name: workerMap.get(payout.worker_id) || 'Unknown',
+          job_name: jobMap.get(payout.job_id) || 'Unknown',
+          days_worked: payout.days_worked,
+          total_days: payout.total_days,
+          deliverables: payout.deliverables,
+          target_deliverables: payout.target_deliverables,
+          base_pay: Number(payout.base_pay),
+          commission: Number(payout.commission),
+          total_payout: Number(payout.total_payout),
+          status: payout.status,
+          payment_type: payout.payment_type,
+          period: `${new Date(payout.period_start).toLocaleDateString()} - ${new Date(payout.period_end).toLocaleDateString()}`
+        }));
+        setPayoutsData(formattedPayouts);
+        return;
+      }
+
+      // If no stored payouts, calculate from attendance and deliverables
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
           worker_id,
           attendance_date,
           status,
+          job_id,
           workers (name),
           jobs (
+            id,
             name,
             pay_structure,
             flat_rate,
@@ -128,21 +175,21 @@ export default function Payouts() {
 
       if (attendanceError) throw attendanceError;
 
-      // Fetch deliverables data
       const { data: deliverablesData, error: deliverablesError } = await supabase
         .from('deliverables')
         .select(`
           worker_id,
           quantity,
           deliverable_date,
+          job_id,
           workers (name),
           jobs (name)
         `);
 
       if (deliverablesError) throw deliverablesError;
 
-      // Calculate actual payouts
-      const calculatedPayouts = calculatePayouts(attendanceData || [], deliverablesData || []);
+      // Calculate and store payouts
+      const calculatedPayouts = await calculateAndStorePayouts(attendanceData || [], deliverablesData || []);
       setPayoutsData(calculatedPayouts);
       
     } catch (error) {
@@ -152,7 +199,7 @@ export default function Payouts() {
     }
   };
 
-  const calculatePayouts = (attendance: any[], deliverables: any[]): PayoutData[] => {
+  const calculateAndStorePayouts = async (attendance: any[], deliverables: any[]): Promise<PayoutData[]> => {
     const workerMap = new Map();
     
     // Process attendance data
@@ -161,6 +208,8 @@ export default function Payouts() {
       if (!workerMap.has(key)) {
         workerMap.set(key, {
           id: key,
+          worker_id: record.worker_id,
+          job_id: record.job_id,
           worker_name: record.workers?.name || 'Unknown',
           job_name: record.jobs?.name || 'Unknown',
           days_worked: 0,
@@ -195,7 +244,61 @@ export default function Payouts() {
       }
     });
 
-    // Calculate payouts
+    // Calculate payouts and store them
+    const payoutRecords = [];
+    const today = new Date();
+    const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    for (const worker of workerMap.values()) {
+      let basePay = 0;
+      let commission = 0;
+      
+      switch (worker.pay_structure) {
+        case 'flat_rate':
+          basePay = worker.flat_rate * worker.days_worked;
+          break;
+        case 'commission':
+          commission = worker.commission_per_item * worker.deliverables;
+          break;
+        case 'hourly':
+          basePay = worker.hourly_rate * worker.days_worked * 8;
+          break;
+      }
+      
+      const totalPayout = basePay + commission;
+      
+      const payoutRecord = {
+        worker_id: worker.worker_id,
+        job_id: worker.job_id,
+        period_start: periodStart.toISOString().split('T')[0],
+        period_end: periodEnd.toISOString().split('T')[0],
+        days_worked: worker.days_worked,
+        total_days: worker.total_days,
+        deliverables: worker.deliverables,
+        target_deliverables: worker.target_deliverables,
+        base_pay: basePay,
+        commission: commission,
+        total_payout: totalPayout,
+        status: 'pending',
+        payment_type: worker.payment_type
+      };
+
+      payoutRecords.push(payoutRecord);
+    }
+
+    // Store payouts in database
+    if (payoutRecords.length > 0) {
+      const { error } = await supabase
+        .from('payouts')
+        .insert(payoutRecords);
+      
+      if (error) {
+        console.error('Error storing payouts:', error);
+      }
+    }
+
+    // Return formatted data
     return Array.from(workerMap.values()).map(worker => {
       let basePay = 0;
       let commission = 0;
@@ -208,15 +311,24 @@ export default function Payouts() {
           commission = worker.commission_per_item * worker.deliverables;
           break;
         case 'hourly':
-          basePay = worker.hourly_rate * worker.days_worked * 8; // 8 hours per day
+          basePay = worker.hourly_rate * worker.days_worked * 8;
           break;
       }
       
-      worker.base_pay = basePay;
-      worker.commission = commission;
-      worker.total_payout = basePay + commission;
-      
-      return worker;
+      return {
+        id: worker.id,
+        worker_name: worker.worker_name,
+        job_name: worker.job_name,
+        days_worked: worker.days_worked,
+        total_days: worker.total_days,
+        deliverables: worker.deliverables,
+        target_deliverables: worker.target_deliverables,
+        base_pay: basePay,
+        commission: commission,
+        total_payout: basePay + commission,
+        status: 'pending',
+        payment_type: worker.payment_type
+      };
     });
   };
 
@@ -282,18 +394,24 @@ export default function Payouts() {
 
   const approvePayout = async (payoutId: string) => {
     try {
-      // Update the payout status in local state for real-time feedback
+      // Update in database
+      const { error } = await supabase
+        .from('payouts')
+        .update({ status: 'approved' })
+        .eq('id', payoutId);
+
+      if (error) throw error;
+
+      // Update local state
       setPayoutsData(prev => prev.map(payout => 
         payout.id === payoutId 
           ? { ...payout, status: 'approved' }
           : payout
       ));
 
-      // In a real implementation, you would also update the backend
-      // For now, we'll simulate this with a success message
       toast({
         title: "Payout approved",
-        description: "The payout has been successfully approved.",
+        description: "The payout has been successfully approved and saved.",
       });
     } catch (error) {
       toast({

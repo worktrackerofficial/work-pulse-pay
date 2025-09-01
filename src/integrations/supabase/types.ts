@@ -242,6 +242,69 @@ export type Database = {
         }
         Relationships: []
       }
+      payouts: {
+        Row: {
+          base_pay: number
+          bonus: number | null
+          commission: number
+          created_at: string
+          days_worked: number
+          deductions: number | null
+          deliverables: number
+          id: string
+          job_id: string
+          payment_type: string
+          period_end: string
+          period_start: string
+          status: string
+          target_deliverables: number
+          total_days: number
+          total_payout: number
+          updated_at: string
+          worker_id: string
+        }
+        Insert: {
+          base_pay?: number
+          bonus?: number | null
+          commission?: number
+          created_at?: string
+          days_worked?: number
+          deductions?: number | null
+          deliverables?: number
+          id?: string
+          job_id: string
+          payment_type: string
+          period_end: string
+          period_start: string
+          status?: string
+          target_deliverables?: number
+          total_days?: number
+          total_payout?: number
+          updated_at?: string
+          worker_id: string
+        }
+        Update: {
+          base_pay?: number
+          bonus?: number | null
+          commission?: number
+          created_at?: string
+          days_worked?: number
+          deductions?: number | null
+          deliverables?: number
+          id?: string
+          job_id?: string
+          payment_type?: string
+          period_end?: string
+          period_start?: string
+          status?: string
+          target_deliverables?: number
+          total_days?: number
+          total_payout?: number
+          updated_at?: string
+          worker_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -263,6 +326,48 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      tasks: {
+        Row: {
+          created_at: string
+          description: string | null
+          due_date: string
+          id: string
+          priority: string
+          related_id: string | null
+          status: string
+          title: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          due_date: string
+          id?: string
+          priority?: string
+          related_id?: string | null
+          status?: string
+          title: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          due_date?: string
+          id?: string
+          priority?: string
+          related_id?: string | null
+          status?: string
+          title?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

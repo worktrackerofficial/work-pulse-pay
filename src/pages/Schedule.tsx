@@ -71,31 +71,24 @@ export default function Schedule() {
   };
 
   const createSchedule = () => {
-    toast({
-      title: "Create Schedule",
-      description: "Schedule creation feature coming soon!",
-    });
+    // Navigate to create job dialog (reuse existing functionality)
+    const event = new CustomEvent('open-create-job');
+    window.dispatchEvent(event);
   };
 
   const editSchedule = (scheduleId: string) => {
-    toast({
-      title: "Edit Schedule",
-      description: `Editing schedule ${scheduleId} - feature coming soon!`,
-    });
+    // For now, navigate to jobs page where they can edit
+    window.location.href = '/jobs';
   };
 
   const manageWorkers = (scheduleId: string) => {
-    toast({
-      title: "Manage Workers",
-      description: `Managing workers for schedule ${scheduleId} - feature coming soon!`,
-    });
+    // Navigate to workers page to manage team
+    window.location.href = '/workers';
   };
 
   const viewCalendar = (scheduleId: string) => {
-    toast({
-      title: "View Calendar",
-      description: `Calendar view for schedule ${scheduleId} - feature coming soon!`,
-    });
+    // Navigate to attendance page to view calendar-like data
+    window.location.href = '/attendance';
   };
   return (
     <div className="space-y-6">
