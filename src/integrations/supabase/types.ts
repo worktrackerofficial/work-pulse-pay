@@ -196,6 +196,7 @@ export type Database = {
           status: Database["public"]["Enums"]["job_status"]
           target_deliverable: number
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           commission_per_item?: number | null
@@ -216,6 +217,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           target_deliverable?: number
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           commission_per_item?: number | null
@@ -236,6 +238,31 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           target_deliverable?: number
           updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -251,6 +278,7 @@ export type Database = {
           role: string
           status: Database["public"]["Enums"]["worker_status"]
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -263,6 +291,7 @@ export type Database = {
           role: string
           status?: Database["public"]["Enums"]["worker_status"]
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -275,6 +304,7 @@ export type Database = {
           role?: string
           status?: Database["public"]["Enums"]["worker_status"]
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
