@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AddWorkerDialogProps {
   children: React.ReactNode;
@@ -23,6 +24,7 @@ export function AddWorkerDialog({ children, jobId, onWorkerAdded }: AddWorkerDia
     department: "",
   });
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +39,15 @@ export function AddWorkerDialog({ children, jobId, onWorkerAdded }: AddWorkerDia
     }
 
     try {
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to add a worker.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // First, create the worker
       const { data: worker, error: workerError } = await supabase
         .from('workers')
@@ -45,7 +56,8 @@ export function AddWorkerDialog({ children, jobId, onWorkerAdded }: AddWorkerDia
           email: formData.email || null,
           phone: formData.phone || null,
           role: formData.role,
-          department: formData.department
+          department: formData.department,
+          user_id: user.id
         })
         .select()
         .single();
@@ -68,7 +80,8 @@ export function AddWorkerDialog({ children, jobId, onWorkerAdded }: AddWorkerDia
       await supabase.from('activity_logs').insert({
         action: 'Worker added',
         entity_type: 'worker',
-        entity_name: formData.name
+        entity_name: formData.name,
+        entity_id: worker.id
       });
 
       toast({

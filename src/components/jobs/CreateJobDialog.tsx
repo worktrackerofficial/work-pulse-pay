@@ -22,6 +22,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CreateJobDialogProps {
   children: React.ReactNode;
@@ -32,6 +33,7 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
   
   const [formData, setFormData] = useState({
     name: "",
@@ -65,7 +67,16 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
     setLoading(true);
     
     try {
-      const { error } = await supabase.from('jobs').insert({
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to create a job.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data: insertedJob, error } = await supabase.from('jobs').insert({
         name: formData.name,
         industry: formData.industry,
         description: formData.description,
@@ -79,17 +90,21 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
         flat_rate: formData.flatRate,
         hourly_rate: formData.hourlyRate,
         payment_frequency: formData.paymentFrequency,
-        excluded_days: formData.excludedDays
-      });
+        excluded_days: formData.excludedDays,
+        user_id: user.id
+      }).select().single();
 
       if (error) throw error;
 
       // Log activity
-      await supabase.from('activity_logs').insert({
-        action: 'New job created',
-        entity_type: 'job',
-        entity_name: formData.name
-      });
+      if (insertedJob) {
+        await supabase.from('activity_logs').insert({
+          action: 'New job created',
+          entity_type: 'job',
+          entity_name: formData.name,
+          entity_id: insertedJob.id
+        });
+      }
 
       toast({
         title: "Success",
