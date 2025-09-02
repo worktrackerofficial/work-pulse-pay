@@ -80,8 +80,14 @@ export default function Dashboard() {
       const presentAttendance = (presentCount as any)?.count || 0;
       const attendanceRate = totalAttendance > 0 ? `${Math.round((presentAttendance / totalAttendance) * 100)}%` : "0%";
 
-      // Calculate pending payouts (mock calculation)
-      const pendingPayouts = "$18,450";
+      // Calculate actual pending payouts
+      const { data: pendingPayoutsData } = await supabase
+        .from('payouts')
+        .select('total_payout')
+        .eq('status', 'pending');
+      
+      const totalPendingAmount = pendingPayoutsData?.reduce((sum, payout) => sum + Number(payout.total_payout), 0) || 0;
+      const pendingPayouts = `$${totalPendingAmount.toLocaleString()}`;
 
       setStats({
         activeWorkers: workersResult.count || 0,

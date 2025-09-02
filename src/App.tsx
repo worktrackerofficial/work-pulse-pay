@@ -8,7 +8,7 @@ import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
 import Workers from "./pages/Workers";
 import Attendance from "./pages/Attendance";
-import Schedule from "./pages/Schedule";
+
 import Payouts from "./pages/Payouts";
 import Reports from "./pages/Reports";
 import Auth from "./pages/Auth";
@@ -89,13 +89,6 @@ const AppRoutes = () => (
         <ProtectedRoute>
           <Layout>
             <Attendance />
-          </Layout>
-        </ProtectedRoute>
-      } />
-      <Route path="/schedule" element={
-        <ProtectedRoute>
-          <Layout>
-            <Schedule />
           </Layout>
         </ProtectedRoute>
       } />

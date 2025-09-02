@@ -27,65 +27,26 @@ interface AttendanceRecord {
   attendance_date: string;
   status: string;
   notes?: string;
+  worker_id: string;
+  job_id: string;
   workers: {
     name: string;
   };
   jobs: {
     name: string;
+    target_deliverable?: number;
   };
+  deliverables?: {
+    quantity: number;
+  }[];
 }
 
-const attendanceRecords = [
-  {
-    id: 1,
-    workerName: "John Smith",
-    job: "Warehouse Team Alpha",
-    date: "2024-01-15",
-    clockIn: "08:00",
-    clockOut: "17:00",
-    status: "present",
-    deliverables: 145,
-    target: 150
-  },
-  {
-    id: 2,
-    workerName: "Sarah Johnson",
-    job: "Delivery Squad Beta",
-    date: "2024-01-15",
-    clockIn: "09:00",
-    clockOut: "18:00",
-    status: "present",
-    deliverables: 52,
-    target: 50
-  },
-  {
-    id: 3,
-    workerName: "Mike Chen",
-    job: "Customer Support Team",
-    date: "2024-01-15",
-    clockIn: "10:00",
-    clockOut: "19:00",
-    status: "present",
-    deliverables: 28,
-    target: 30
-  },
-  {
-    id: 4,
-    workerName: "Emily Davis",
-    job: "Warehouse Team Alpha",
-    date: "2024-01-15",
-    clockIn: null,
-    clockOut: null,
-    status: "absent",
-    deliverables: 0,
-    target: 150
-  }
-];
 
 export default function Attendance() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
+  const [deliverables, setDeliverables] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,17 +55,29 @@ export default function Attendance() {
 
   const fetchAttendanceRecords = async () => {
     try {
-      const { data, error } = await supabase
-        .from('attendance')
-        .select(`
-          *,
-          workers(name),
-          jobs(name)
-        `)
-        .eq('attendance_date', selectedDate);
+      const [attendanceRes, deliverablesRes] = await Promise.all([
+        supabase
+          .from('attendance')
+          .select(`
+            *,
+            workers(name),
+            jobs(name, target_deliverable)
+          `)
+          .eq('attendance_date', selectedDate),
+        supabase
+          .from('deliverables')
+          .select(`
+            *,
+            workers(name)
+          `)
+          .eq('deliverable_date', selectedDate)
+      ]);
 
-      if (error) throw error;
-      setRecords(data || []);
+      if (attendanceRes.error) throw attendanceRes.error;
+      if (deliverablesRes.error) throw deliverablesRes.error;
+      
+      setRecords(attendanceRes.data || []);
+      setDeliverables(deliverablesRes.data || []);
     } catch (error) {
       console.error('Error fetching attendance:', error);
     } finally {
@@ -250,11 +223,44 @@ export default function Attendance() {
                   <TableRow key={record.id}>
                     <TableCell className="font-medium">{record.workers?.name}</TableCell>
                     <TableCell>{record.jobs?.name}</TableCell>
-                    <TableCell>-</TableCell>
-                    <TableCell>-</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>-</TableCell>
-                    <TableCell>-</TableCell>
+                     <TableCell>08:00</TableCell>
+                     <TableCell>{record.status === 'present' ? '17:00' : '-'}</TableCell>
+                     <TableCell>{getStatusBadge(record.status)}</TableCell>
+                     <TableCell>
+                       {(() => {
+                         const workerDeliverables = deliverables.filter(d => d.worker_id === record.worker_id);
+                         const totalDeliverables = workerDeliverables.reduce((sum, d) => sum + d.quantity, 0);
+                         return totalDeliverables || '-';
+                       })()}
+                     </TableCell>
+                     <TableCell>
+                       {(() => {
+                         const workerDeliverables = deliverables.filter(d => d.worker_id === record.worker_id);
+                         const totalDeliverables = workerDeliverables.reduce((sum, d) => sum + d.quantity, 0);
+                         const target = (record.jobs as any)?.target_deliverable || 0;
+                         if (target === 0) return '-';
+                         const percentage = Math.round((totalDeliverables / target) * 100);
+                         return (
+                           <div className="flex items-center gap-2">
+                             <span className={`text-sm ${
+                               percentage >= 100 ? 'text-success' : 
+                               percentage >= 80 ? 'text-warning' : 'text-destructive'
+                             }`}>
+                               {percentage}%
+                             </span>
+                             <div className="w-16 bg-muted rounded-full h-2">
+                               <div 
+                                 className={`h-2 rounded-full ${
+                                   percentage >= 100 ? 'bg-success' : 
+                                   percentage >= 80 ? 'bg-warning' : 'bg-destructive'
+                                 }`}
+                                 style={{ width: `${Math.min(100, percentage)}%` }}
+                               />
+                             </div>
+                           </div>
+                         );
+                       })()}
+                     </TableCell>
                   </TableRow>
                 ))
               )}

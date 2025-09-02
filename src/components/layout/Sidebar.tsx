@@ -15,7 +15,6 @@ const navigation = [
   { name: "Jobs", href: "/jobs", icon: Briefcase },
   { name: "Workers", href: "/workers", icon: Users },
   { name: "Attendance", href: "/attendance", icon: ClipboardCheck },
-  { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Payouts", href: "/payouts", icon: DollarSign },
   { name: "Reports", href: "/reports", icon: BarChart3 },
 ];

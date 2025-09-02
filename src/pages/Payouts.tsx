@@ -440,8 +440,19 @@ export default function Payouts() {
     }
   };
 
-  const totalPending = payouts.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.totalPayout, 0);
-  const totalProcessed = payouts.filter(p => p.status === 'processed').reduce((sum, p) => sum + p.totalPayout, 0);
+  const actualPayouts = payoutsData.length > 0 ? payoutsData : payouts;
+  const totalPending = actualPayouts.filter(p => p.status === 'pending').reduce((sum, p) => {
+    const total = 'totalPayout' in p ? p.totalPayout : p.total_payout;
+    return sum + Number(total);
+  }, 0);
+  const totalProcessed = actualPayouts.filter(p => p.status === 'processed').reduce((sum, p) => {
+    const total = 'totalPayout' in p ? p.totalPayout : p.total_payout;
+    return sum + Number(total);
+  }, 0);
+  const averagePayout = actualPayouts.length > 0 ? actualPayouts.reduce((sum, p) => {
+    const total = 'totalPayout' in p ? p.totalPayout : p.total_payout;
+    return sum + Number(total);
+  }, 0) / actualPayouts.length : 0;
 
   return (
     <div className="space-y-6">
@@ -488,7 +499,7 @@ export default function Payouts() {
             <div>
               <p className="text-sm text-muted-foreground">Average Payout</p>
               <p className="text-2xl font-bold text-primary">
-                ${Math.round(payouts.reduce((sum, p) => sum + p.totalPayout, 0) / payouts.length).toLocaleString()}
+                ${Math.round(averagePayout).toLocaleString()}
               </p>
             </div>
           </CardContent>
