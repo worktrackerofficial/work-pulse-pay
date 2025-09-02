@@ -31,6 +31,8 @@ export const useTasks = () => {
 
       if (tasksError) {
         console.error('Error fetching tasks:', tasksError);
+      } else {
+        console.log('Stored tasks fetched:', storedTasks);
       }
 
       const generatedTasks: Task[] = [];

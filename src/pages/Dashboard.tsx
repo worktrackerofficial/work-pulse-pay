@@ -97,7 +97,11 @@ export default function Dashboard() {
       });
 
       if (activityResult.data) {
+        console.log('Activity logs fetched:', activityResult.data);
         setRecentActivity(activityResult.data);
+      } else {
+        console.log('No activity logs found');
+        setRecentActivity([]);
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
