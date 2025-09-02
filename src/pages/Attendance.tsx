@@ -44,33 +44,51 @@ interface AttendanceRecord {
 
 export default function Attendance() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [showAllRecords, setShowAllRecords] = useState(true);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [deliverables, setDeliverables] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchAttendanceRecords();
-  }, [selectedDate]);
+  }, [selectedDate, showAllRecords]);
 
   const fetchAttendanceRecords = async () => {
     try {
+      let attendanceQuery = supabase
+        .from('attendance')
+        .select(`
+          *,
+          workers(name),
+          jobs(name, target_deliverable)
+        `)
+        .order('attendance_date', { ascending: false });
+
+      let deliverablesQuery = supabase
+        .from('deliverables')
+        .select(`
+          *,
+          workers(name)
+        `)
+        .order('deliverable_date', { ascending: false });
+
+      if (!showAllRecords && selectedDate) {
+        attendanceQuery = attendanceQuery.eq('attendance_date', selectedDate);
+        deliverablesQuery = deliverablesQuery.eq('deliverable_date', selectedDate);
+      } else {
+        // Show records from the last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+        
+        attendanceQuery = attendanceQuery.gte('attendance_date', thirtyDaysAgoStr);
+        deliverablesQuery = deliverablesQuery.gte('deliverable_date', thirtyDaysAgoStr);
+      }
+
       const [attendanceRes, deliverablesRes] = await Promise.all([
-        supabase
-          .from('attendance')
-          .select(`
-            *,
-            workers(name),
-            jobs(name, target_deliverable)
-          `)
-          .eq('attendance_date', selectedDate),
-        supabase
-          .from('deliverables')
-          .select(`
-            *,
-            workers(name)
-          `)
-          .eq('deliverable_date', selectedDate)
+        attendanceQuery,
+        deliverablesQuery
       ]);
 
       if (attendanceRes.error) throw attendanceRes.error;
@@ -128,12 +146,29 @@ export default function Attendance() {
                 className="pl-10"
               />
             </div>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-3 py-2 border border-input rounded-md bg-background text-foreground"
-            />
+            <Select
+              value={showAllRecords ? "all" : "date"}
+              onValueChange={(value) => {
+                setShowAllRecords(value === "all");
+                if (value === "all") setSelectedDate("");
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Last 30 days</SelectItem>
+                <SelectItem value="date">Specific date</SelectItem>
+              </SelectContent>
+            </Select>
+            {!showAllRecords && (
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-2 border border-input rounded-md bg-background text-foreground"
+              />
+            )}
           </div>
         </CardContent>
       </Card>
@@ -213,11 +248,11 @@ export default function Attendance() {
                   <TableCell colSpan={7} className="text-center">Loading...</TableCell>
                 </TableRow>
               ) : filteredRecords.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    No attendance records found for {selectedDate}
-                  </TableCell>
-                </TableRow>
+                 <TableRow>
+                   <TableCell colSpan={7} className="text-center text-muted-foreground">
+                     No attendance records found {!showAllRecords && selectedDate ? `for ${selectedDate}` : 'in the last 30 days'}
+                   </TableCell>
+                 </TableRow>
               ) : (
                 filteredRecords.map((record) => (
                   <TableRow key={record.id}>
