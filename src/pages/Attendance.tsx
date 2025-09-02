@@ -181,7 +181,7 @@ export default function Attendance() {
               <div>
                 <p className="text-sm text-muted-foreground">Present Today</p>
                 <p className="text-2xl font-bold text-success">
-                  {records.filter(r => r.status === 'present').length}
+                  {new Set(records.filter(r => r.status === 'present').map(r => r.worker_id)).size}
                 </p>
               </div>
               <CheckCircle className="h-8 w-8 text-success" />
@@ -194,7 +194,7 @@ export default function Attendance() {
               <div>
                 <p className="text-sm text-muted-foreground">Absent Today</p>
                 <p className="text-2xl font-bold text-destructive">
-                  {records.filter(r => r.status === 'absent').length}
+                  {new Set(records.filter(r => r.status === 'absent').map(r => r.worker_id)).size}
                 </p>
               </div>
               <XCircle className="h-8 w-8 text-destructive" />
@@ -206,7 +206,11 @@ export default function Attendance() {
             <div>
               <p className="text-sm text-muted-foreground">Attendance Rate</p>
               <p className="text-2xl font-bold text-primary">
-                {records.length > 0 ? Math.round((records.filter(r => r.status === 'present').length / records.length) * 100) : 0}%
+                {(() => {
+                  const uniqueWorkers = new Set(records.map(r => r.worker_id)).size;
+                  const uniquePresentWorkers = new Set(records.filter(r => r.status === 'present').map(r => r.worker_id)).size;
+                  return uniqueWorkers > 0 ? Math.round((uniquePresentWorkers / uniqueWorkers) * 100) : 0;
+                })()}%
               </p>
             </div>
           </CardContent>
@@ -215,7 +219,7 @@ export default function Attendance() {
           <CardContent className="pt-6">
             <div>
               <p className="text-sm text-muted-foreground">Total Records</p>
-              <p className="text-2xl font-bold text-primary">{records.length}</p>
+              <p className="text-2xl font-bold text-primary">{new Set(records.map(r => r.worker_id)).size}</p>
             </div>
           </CardContent>
         </Card>
