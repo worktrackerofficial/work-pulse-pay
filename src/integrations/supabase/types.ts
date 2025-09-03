@@ -196,7 +196,7 @@ export type Database = {
           status: Database["public"]["Enums"]["job_status"]
           target_deliverable: number
           updated_at: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           commission_per_item?: number | null
@@ -217,7 +217,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           target_deliverable?: number
           updated_at?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           commission_per_item?: number | null
@@ -238,7 +238,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           target_deliverable?: number
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -383,7 +383,7 @@ export type Database = {
           role: string
           status: Database["public"]["Enums"]["worker_status"]
           updated_at: string
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           created_at?: string
@@ -396,7 +396,7 @@ export type Database = {
           role: string
           status?: Database["public"]["Enums"]["worker_status"]
           updated_at?: string
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           created_at?: string
@@ -409,7 +409,7 @@ export type Database = {
           role?: string
           status?: Database["public"]["Enums"]["worker_status"]
           updated_at?: string
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
