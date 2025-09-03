@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AttendanceRecord {
   id: string;
@@ -49,13 +50,24 @@ export default function Attendance() {
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [deliverables, setDeliverables] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  console.log('Attendance page user:', user);
 
   useEffect(() => {
-    fetchAttendanceRecords();
-  }, [selectedDate, showAllRecords]);
+    if (user) {
+      fetchAttendanceRecords();
+    }
+  }, [selectedDate, showAllRecords, user]);
 
   const fetchAttendanceRecords = async () => {
+    if (!user) {
+      console.log('No user found, skipping fetch');
+      return;
+    }
+
     try {
+      console.log('Fetching attendance records for user:', user.id);
       let attendanceQuery = supabase
         .from('attendance')
         .select(`

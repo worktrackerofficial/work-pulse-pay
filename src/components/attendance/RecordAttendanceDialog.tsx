@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,25 +9,26 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Clock, CheckCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface RecordAttendanceDialogProps {
   children: React.ReactNode;
 }
 
-// Mock data - replace with actual data from your database
-const mockJobs = [
-  { id: 1, name: "Warehouse Team Alpha" },
-  { id: 2, name: "Delivery Squad Beta" },
-  { id: 3, name: "Customer Support Team" },
-];
+interface Job {
+  id: string;
+  name: string;
+}
 
-const mockWorkers = [
-  { id: 1, name: "John Smith", jobId: 1 },
-  { id: 2, name: "Sarah Johnson", jobId: 2 },
-  { id: 3, name: "Mike Chen", jobId: 3 },
-  { id: 4, name: "Emily Davis", jobId: 1 },
-  { id: 5, name: "Robert Wilson", jobId: 2 },
-];
+interface Worker {
+  id: string;
+  name: string;
+}
+
+interface JobWithWorkers extends Job {
+  workers: Worker[];
+}
 
 export function RecordAttendanceDialog({ children }: RecordAttendanceDialogProps) {
   const [open, setOpen] = useState(false);
@@ -38,16 +39,79 @@ export function RecordAttendanceDialog({ children }: RecordAttendanceDialogProps
   const [clockOut, setClockOut] = useState("");
   const [status, setStatus] = useState("");
   const [deliverables, setDeliverables] = useState("");
+  const [jobs, setJobs] = useState<JobWithWorkers[]>([]);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
-  const filteredWorkers = mockWorkers.filter(worker => 
-    selectedJob ? worker.jobId === parseInt(selectedJob) : true
-  );
+  useEffect(() => {
+    if (open && user) {
+      fetchJobsAndWorkers();
+    }
+  }, [open, user]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const fetchJobsAndWorkers = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch jobs
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('jobs')
+        .select('id, name')
+        .eq('status', 'active')
+        .eq('user_id', user?.id);
+
+      if (jobsError) {
+        console.error('Error fetching jobs:', jobsError);
+        toast({
+          title: "Error",
+          description: "Failed to load jobs",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Fetch workers for each job
+      const jobsWithWorkers: JobWithWorkers[] = [];
+      
+      for (const job of jobsData || []) {
+        const { data: workersData, error: workersError } = await supabase
+          .from('workers')
+          .select('id, name')
+          .eq('status', 'active')
+          .eq('user_id', user?.id);
+
+        if (workersError) {
+          console.error('Error fetching workers:', workersError);
+          continue;
+        }
+
+        jobsWithWorkers.push({
+          ...job,
+          workers: workersData || []
+        });
+      }
+
+      setJobs(jobsWithWorkers);
+    } catch (error) {
+      console.error('Error in fetchJobsAndWorkers:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedJobData = jobs.find(job => job.id === selectedJob);
+  const availableWorkers = selectedJobData?.workers || [];
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedJob || !selectedWorker || !status || !attendanceDate) {
+    if (!selectedJob || !selectedWorker || !status || !attendanceDate || !user) {
       toast({
         title: "Missing Information",
         description: "Please fill in all required fields.",
@@ -56,34 +120,72 @@ export function RecordAttendanceDialog({ children }: RecordAttendanceDialogProps
       return;
     }
 
-    // Here you would normally save to database
-    const workerName = mockWorkers.find(w => w.id === parseInt(selectedWorker))?.name;
-    const jobName = mockJobs.find(j => j.id === parseInt(selectedJob))?.name;
-    
-    console.log("Recording attendance:", {
-      jobId: selectedJob,
-      workerId: selectedWorker,
-      date: attendanceDate,
-      clockIn,
-      clockOut,
-      status,
-      deliverables: parseInt(deliverables) || 0,
-    });
+    try {
+      setLoading(true);
 
-    toast({
-      title: "Attendance Recorded",
-      description: `Attendance for ${workerName} in ${jobName} has been recorded.`,
-    });
+      const { error } = await supabase
+        .from('attendance')
+        .insert({
+          job_id: selectedJob,
+          worker_id: selectedWorker,
+          attendance_date: format(attendanceDate, 'yyyy-MM-dd'),
+          status: status as any,
+          notes: deliverables ? `Deliverables: ${deliverables}` : null
+        });
 
-    setOpen(false);
-    // Reset form
-    setSelectedJob("");
-    setSelectedWorker("");
-    setAttendanceDate(new Date());
-    setClockIn("");
-    setClockOut("");
-    setStatus("");
-    setDeliverables("");
+      if (error) {
+        console.error('Error recording attendance:', error);
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Record deliverables if provided and status is present
+      if (deliverables && (status === 'present' || status === 'late')) {
+        const { error: deliverablesError } = await supabase
+          .from('deliverables')
+          .insert({
+            job_id: selectedJob,
+            worker_id: selectedWorker,
+            deliverable_date: format(attendanceDate, 'yyyy-MM-dd'),
+            quantity: parseInt(deliverables) || 0
+          });
+
+        if (deliverablesError) {
+          console.error('Error recording deliverables:', deliverablesError);
+        }
+      }
+
+      const workerName = availableWorkers.find(w => w.id === selectedWorker)?.name;
+      const jobName = selectedJobData?.name;
+      
+      toast({
+        title: "Attendance Recorded",
+        description: `Attendance for ${workerName} in ${jobName} has been recorded.`,
+      });
+
+      setOpen(false);
+      // Reset form
+      setSelectedJob("");
+      setSelectedWorker("");
+      setAttendanceDate(new Date());
+      setClockIn("");
+      setClockOut("");
+      setStatus("");
+      setDeliverables("");
+    } catch (error) {
+      console.error('Error in handleSubmit:', error);
+      toast({
+        title: "Error",
+        description: "Failed to record attendance",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -125,13 +227,13 @@ export function RecordAttendanceDialog({ children }: RecordAttendanceDialogProps
 
           <div className="space-y-2">
             <Label htmlFor="job">Job *</Label>
-            <Select value={selectedJob} onValueChange={setSelectedJob}>
+            <Select value={selectedJob} onValueChange={setSelectedJob} disabled={loading}>
               <SelectTrigger>
-                <SelectValue placeholder="Select job" />
+                <SelectValue placeholder={loading ? "Loading jobs..." : "Select job"} />
               </SelectTrigger>
               <SelectContent>
-                {mockJobs.map((job) => (
-                  <SelectItem key={job.id} value={job.id.toString()}>
+                {jobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>
                     {job.name}
                   </SelectItem>
                 ))}
@@ -141,13 +243,13 @@ export function RecordAttendanceDialog({ children }: RecordAttendanceDialogProps
 
           <div className="space-y-2">
             <Label htmlFor="worker">Worker *</Label>
-            <Select value={selectedWorker} onValueChange={setSelectedWorker} disabled={!selectedJob}>
+            <Select value={selectedWorker} onValueChange={setSelectedWorker} disabled={!selectedJob || loading}>
               <SelectTrigger>
-                <SelectValue placeholder="Select worker" />
+                <SelectValue placeholder={!selectedJob ? "Select a job first" : "Select worker"} />
               </SelectTrigger>
               <SelectContent>
-                {filteredWorkers.map((worker) => (
-                  <SelectItem key={worker.id} value={worker.id.toString()}>
+                {availableWorkers.map((worker) => (
+                  <SelectItem key={worker.id} value={worker.id}>
                     {worker.name}
                   </SelectItem>
                 ))}
@@ -210,9 +312,9 @@ export function RecordAttendanceDialog({ children }: RecordAttendanceDialogProps
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-gradient-to-r from-primary to-primary-glow">
+            <Button type="submit" className="bg-gradient-to-r from-primary to-primary-glow" disabled={loading}>
               <CheckCircle className="mr-2 h-4 w-4" />
-              Record Attendance
+              {loading ? "Recording..." : "Record Attendance"}
             </Button>
           </div>
         </form>
