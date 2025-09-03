@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, Building, Phone, Mail, Users, TrendingUp } from "lucide-react";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,6 +21,7 @@ interface Worker {
   email?: string;
   status: string;
   join_date: string;
+  tax_info?: string;
 }
 
 interface WorkerProfileDialogProps {
@@ -269,6 +271,15 @@ export function WorkerProfileDialog({ children, workerId, onWorkerUpdated }: Wor
                           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         />
                       </div>
+                      <div>
+                        <Label htmlFor="taxInfo">Tax Information</Label>
+                        <Input
+                          id="taxInfo"
+                          value={formData.tax_info || ''}
+                          onChange={(e) => setFormData({ ...formData, tax_info: e.target.value })}
+                          placeholder="KRA PIN or tax identification number"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -291,6 +302,10 @@ export function WorkerProfileDialog({ children, workerId, onWorkerUpdated }: Wor
                         <Calendar className="h-4 w-4 text-primary" />
                         <span className="text-muted-foreground">Join Date:</span>
                         <span className="font-medium">{new Date(worker.join_date).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Tax Info:</span>
+                        <span className="font-medium">{worker.tax_info || 'N/A'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-muted-foreground">Status:</span>
@@ -357,31 +372,68 @@ export function WorkerProfileDialog({ children, workerId, onWorkerUpdated }: Wor
           </TabsContent>
 
           <TabsContent value="attendance" className="space-y-4">
-            <div className="space-y-3">
-              {attendance.map((record) => (
-                <Card key={record.id}>
-                  <CardContent className="pt-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="font-medium">{record.jobs?.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(record.attendance_date).toLocaleDateString()}
-                        </p>
-                        {record.notes && (
-                          <p className="text-xs text-muted-foreground mt-1">{record.notes}</p>
-                        )}
-                      </div>
-                      <Badge variant={record.status === 'present' ? 'default' : 'destructive'}>
-                        {record.status}
-                      </Badge>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Attendance Calendar
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <CalendarComponent
+                      mode="multiple"
+                      selected={attendance
+                        .filter(record => record.status === 'present')
+                        .map(record => new Date(record.attendance_date))}
+                      className="rounded-md border"
+                      modifiers={{
+                        present: attendance
+                          .filter(record => record.status === 'present')
+                          .map(record => new Date(record.attendance_date)),
+                        absent: attendance
+                          .filter(record => record.status === 'absent')
+                          .map(record => new Date(record.attendance_date)),
+                        late: attendance
+                          .filter(record => record.status === 'late')
+                          .map(record => new Date(record.attendance_date))
+                      }}
+                      modifiersStyles={{
+                        present: { backgroundColor: '#3b82f6', color: 'white' },
+                        absent: { backgroundColor: '#ef4444', color: 'white' },
+                        late: { backgroundColor: '#f59e0b', color: 'white' }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                      <span className="text-sm">Present</span>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {attendance.length === 0 && (
-                <p className="text-muted-foreground text-center py-8">No attendance records found.</p>
-              )}
-            </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-red-500 rounded"></div>
+                      <span className="text-sm">Absent</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-yellow-500 rounded"></div>
+                      <span className="text-sm">Late</span>
+                    </div>
+                    <div className="pt-4 space-y-2">
+                      <h4 className="font-medium">Recent Records</h4>
+                      {attendance.slice(0, 5).map((record) => (
+                        <div key={record.id} className="flex justify-between items-center text-sm">
+                          <span>{new Date(record.attendance_date).toLocaleDateString()}</span>
+                          <Badge variant={record.status === 'present' ? 'default' : record.status === 'late' ? 'secondary' : 'destructive'} className="text-xs">
+                            {record.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="performance" className="space-y-4">

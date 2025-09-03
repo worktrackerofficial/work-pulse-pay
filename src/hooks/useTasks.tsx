@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { addDays, isAfter, isBefore, startOfDay } from "date-fns";
+import { addDays, isAfter, isBefore, startOfDay, format } from "date-fns";
 
 export interface Task {
   id: string;
@@ -10,7 +10,7 @@ export interface Task {
   due_date: string;
   priority: 'high' | 'medium' | 'low';
   status: 'pending' | 'completed';
-  type: 'attendance' | 'deliverables' | 'payout' | 'report';
+  type: 'attendance' | 'deliverables' | 'payout' | 'report' | 'job_deadline';
   related_id?: string;
 }
 
@@ -38,28 +38,70 @@ export const useTasks = () => {
       const generatedTasks: Task[] = [];
       const today = startOfDay(new Date());
       
-      // Fetch active jobs for deliverable reminders
+      // Fetch active jobs and their data
       const { data: jobs } = await supabase
         .from('jobs')
         .select('*')
         .eq('status', 'active');
 
-      // Check if we need to create new tasks based on jobs
-      const existingTaskTypes = new Set(storedTasks?.map(t => `${t.type}-${t.related_id}`) || []);
+      // Check for jobs without recent attendance records
+      const { data: recentAttendance } = await supabase
+        .from('attendance')
+        .select('job_id, attendance_date')
+        .gte('attendance_date', format(addDays(today, -2), 'yyyy-MM-dd'));
 
+      const jobsWithRecentAttendance = new Set(recentAttendance?.map(a => a.job_id) || []);
+
+      // Check for pending payouts that need approval
+      const { data: pendingPayouts } = await supabase
+        .from('payouts')
+        .select('*')
+        .eq('status', 'pending');
+
+      // Generate real tasks based on actual data
       jobs?.forEach(job => {
-        const deliverableTaskKey = `deliverables-${job.id}`;
-        
-        if (!existingTaskTypes.has(deliverableTaskKey)) {
-          if (job.deliverable_frequency === 'daily') {
+        // Task for jobs without recent attendance
+        if (!jobsWithRecentAttendance.has(job.id)) {
+          generatedTasks.push({
+            id: `attendance-${job.id}`,
+            title: `Record attendance for ${job.name}`,
+            description: `No attendance recorded for ${job.name} in the last 2 days`,
+            due_date: today.toISOString(),
+            priority: 'high',
+            status: 'pending',
+            type: 'attendance',
+            related_id: job.id
+          });
+        }
+
+        // Task for deliverable recording based on frequency
+        if (job.deliverable_frequency === 'daily') {
+          generatedTasks.push({
+            id: `deliverable-${job.id}`,
+            title: `Record daily deliverables for ${job.name}`,
+            description: `Daily deliverable recording due for ${job.name}`,
+            due_date: today.toISOString(),
+            priority: 'medium',
+            status: 'pending',
+            type: 'deliverables',
+            related_id: job.id
+          });
+        }
+
+        // Task for job deadlines if they exist
+        if (job.end_date) {
+          const endDate = new Date(job.end_date);
+          const daysUntilDeadline = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysUntilDeadline <= 7 && daysUntilDeadline > 0) {
             generatedTasks.push({
-              id: `deliverable-${job.id}`,
-              title: `Record deliverables for ${job.name}`,
-              description: `Daily deliverable recording due for ${job.name}`,
-              due_date: new Date().toISOString(),
-              priority: 'high',
+              id: `deadline-${job.id}`,
+              title: `${job.name} deadline approaching`,
+              description: `Job ${job.name} ends in ${daysUntilDeadline} days`,
+              due_date: endDate.toISOString(),
+              priority: daysUntilDeadline <= 3 ? 'high' : 'medium',
               status: 'pending',
-              type: 'deliverables',
+              type: 'job_deadline',
               related_id: job.id
             });
           } else if (job.deliverable_frequency === 'weekly') {
@@ -77,81 +119,21 @@ export const useTasks = () => {
         }
       });
 
-      // Add system tasks if they don't exist
-      if (!existingTaskTypes.has('attendance-')) {
+      // Task for pending payouts
+      if (pendingPayouts && pendingPayouts.length > 0) {
         generatedTasks.push({
-          id: 'attendance-reminder',
-          title: 'Record today\'s attendance',
-          description: 'Mark attendance for all active workers',
-          due_date: new Date().toISOString(),
-          priority: 'high',
-          status: 'pending',
-          type: 'attendance'
-        });
-      }
-
-      if (!existingTaskTypes.has('payout-')) {
-        generatedTasks.push({
-          id: 'weekly-payouts',
-          title: 'Process weekly payouts',
-          description: 'Calculate and approve weekly worker payouts',
-          due_date: addDays(today, 2).toISOString(),
+          id: 'pending-payouts',
+          title: `Approve ${pendingPayouts.length} pending payouts`,
+          description: `${pendingPayouts.length} worker payouts are waiting for approval`,
+          due_date: today.toISOString(),
           priority: 'high',
           status: 'pending',
           type: 'payout'
         });
       }
 
-      if (!existingTaskTypes.has('report-')) {
-        generatedTasks.push({
-          id: 'performance-report',
-          title: 'Generate performance reports',
-          description: 'Weekly performance analysis and reporting',
-          due_date: addDays(today, 3).toISOString(),
-          priority: 'medium',
-          status: 'pending',
-          type: 'report'
-        });
-      }
-
-      // Store new tasks in database
-      if (generatedTasks.length > 0) {
-        const tasksToStore = generatedTasks.map(task => ({
-          user_id: user.id,
-          title: task.title,
-          description: task.description,
-          due_date: task.due_date,
-          priority: task.priority,
-          status: task.status,
-          type: task.type,
-          related_id: task.related_id
-        }));
-
-        const { error } = await supabase
-          .from('tasks')
-          .insert(tasksToStore);
-
-        if (error) {
-          console.error('Error storing tasks:', error);
-        }
-      }
-
-      // Return all tasks (stored + new)
-      const allTasks = [
-        ...(storedTasks?.map(t => ({
-          id: t.id,
-          title: t.title,
-          description: t.description || '',
-          due_date: t.due_date,
-          priority: t.priority as 'high' | 'medium' | 'low',
-          status: t.status as 'pending' | 'completed',
-          type: t.type as 'attendance' | 'deliverables' | 'payout' | 'report',
-          related_id: t.related_id
-        })) || []),
-        ...generatedTasks
-      ];
-
-      return allTasks;
+      // Remove old generic tasks and replace with real data-driven ones
+      return generatedTasks;
     } catch (error) {
       console.error('Error generating tasks:', error);
       return [];

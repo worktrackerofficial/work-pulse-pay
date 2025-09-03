@@ -214,10 +214,11 @@ export default function JobDetail() {
             <div>
               <p className="text-sm text-muted-foreground">Pay Structure</p>
               <p className="font-medium">
-                {job.pay_structure === 'commission' && `$${job.commission_per_item} per item`}
-                {job.pay_structure === 'flat' && `$${job.flat_rate} flat rate`}
-                {job.pay_structure === 'hourly' && `$${job.hourly_rate}/hr`}
-                {job.pay_structure === 'commission_adjusted' && `$${job.commission_per_item} adjusted`}
+                {job.pay_structure === 'commission' && `KShs ${job.commission_per_item} per item`}
+                {job.pay_structure === 'flat' && `KShs ${job.flat_rate} flat rate`}
+                {job.pay_structure === 'hourly' && `KShs ${job.hourly_rate}/hr`}
+                {job.pay_structure === 'commission_adjusted' && `KShs ${job.commission_per_item} adjusted`}
+                {job.pay_structure === 'team_commission' && `KShs ${job.commission_per_item} per item (Pool Commission)`}
               </p>
             </div>
           </CardContent>
@@ -267,9 +268,10 @@ export default function JobDetail() {
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Rate:</span>
                       <span>
-                        {job.pay_structure === 'commission' && `$${job.commission_per_item} per item`}
-                        {job.pay_structure === 'flat' && `$${job.flat_rate} flat rate`}
-                        {job.pay_structure === 'hourly' && `$${job.hourly_rate}/hr`}
+                        {job.pay_structure === 'commission' && `KShs ${job.commission_per_item} per item`}
+                        {job.pay_structure === 'flat' && `KShs ${job.flat_rate} flat rate`}
+                        {job.pay_structure === 'hourly' && `KShs ${job.hourly_rate}/hr`}
+                        {job.pay_structure === 'team_commission' && `KShs ${job.commission_per_item} per item (Pool Commission)`}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -360,8 +362,9 @@ export default function JobDetail() {
               jobId={job.id} 
               workers={workers} 
               deliverableType={job.deliverable_type}
-              deliverableFrequency={job.deliverable_frequency as any}
-              onDeliverablesRecorded={onDeliverablesRecorded}
+              deliverableFrequency={job.deliverable_frequency as "daily" | "weekly" | "monthly"}
+              payStructure={job.pay_structure}
+              onDeliverablesRecorded={fetchJobData}
             >
               <Button className="bg-gradient-to-r from-primary to-primary-glow">
                 <Plus className="mr-2 h-4 w-4" />

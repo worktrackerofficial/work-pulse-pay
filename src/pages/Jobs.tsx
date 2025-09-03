@@ -11,16 +11,22 @@ import { supabase } from "@/integrations/supabase/client";
 interface Job {
   id: string;
   name: string;
+  description: string;
   industry: string;
-  start_date: string;
-  end_date: string;
-  deliverable_type: string;
-  target_deliverable: number;
-  pay_structure: string;
+  pay_structure: 'commission' | 'flat' | 'hourly' | 'commission_adjusted' | 'team_commission';
   commission_per_item: number;
   flat_rate: number;
   hourly_rate: number;
+  target_deliverable: number;
+  deliverable_type: string;
+  deliverable_frequency: string;
+  start_date: string;
+  end_date: string;
   status: string;
+  payment_frequency: string;
+  excluded_days: string[];
+  created_at: string;
+  commission_pool?: number;
   worker_count?: number;
 }
 
@@ -68,11 +74,15 @@ export default function Jobs() {
   const getPayStructureDisplay = (job: Job) => {
     switch (job.pay_structure) {
       case 'commission':
-        return `$${job.commission_per_item} per item`;
+        return `KShs ${job.commission_per_item} per item`;
       case 'flat':
-        return `$${job.flat_rate} flat rate`;
+        return `KShs ${job.flat_rate} flat rate`;
       case 'hourly':
-        return `$${job.hourly_rate}/hr`;
+        return `KShs ${job.hourly_rate}/hr`;
+      case 'commission_adjusted':
+        return `KShs ${job.commission_per_item} per item (adjusted)`;
+      case 'team_commission':
+        return `KShs ${job.commission_per_item} per item (Pool Commission)`;
       default:
         return 'Commission';
     }
@@ -85,15 +95,17 @@ export default function Jobs() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-foreground">Job Management</h1>
-          <CreateJobDialog onJobCreated={fetchJobs}>
-            <Button className="bg-gradient-to-r from-primary to-primary-glow">
-              <Plus className="mr-2 h-4 w-4" />
-              Create New Job
-            </Button>
-          </CreateJobDialog>
+      <div className="space-y-6 p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Jobs Management</h1>
+          <div className="w-full sm:w-auto">
+            <CreateJobDialog onJobCreated={fetchJobs}>
+              <Button className="bg-gradient-to-r from-primary to-primary-glow w-full sm:w-auto">
+                <Plus className="mr-2 h-4 w-4" />
+                Create New Job
+              </Button>
+            </CreateJobDialog>
+          </div>
         </div>
         <div className="flex items-center justify-center h-96">
           <p className="text-muted-foreground">Loading jobs...</p>
@@ -103,15 +115,17 @@ export default function Jobs() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Job Management</h1>
-        <CreateJobDialog onJobCreated={fetchJobs}>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow">
-            <Plus className="mr-2 h-4 w-4" />
-            Create New Job
-          </Button>
-        </CreateJobDialog>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Jobs Management</h1>
+        <div className="w-full sm:w-auto">
+          <CreateJobDialog onJobCreated={fetchJobs}>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow w-full sm:w-auto">
+              <Plus className="mr-2 h-4 w-4" />
+              Create New Job
+            </Button>
+          </CreateJobDialog>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -132,7 +146,7 @@ export default function Jobs() {
       </Card>
 
       {/* Jobs Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {filteredJobs.map((job) => (
           <Card key={job.id} className="shadow-card hover:shadow-elegant transition-all duration-300">
             <CardHeader>

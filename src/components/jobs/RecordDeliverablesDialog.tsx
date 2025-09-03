@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Search } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,13 +22,15 @@ interface RecordDeliverablesDialogProps {
   workers: Worker[];
   deliverableType: string;
   deliverableFrequency: "daily" | "weekly" | "monthly";
+  payStructure?: string;
   onDeliverablesRecorded?: () => void;
 }
 
-export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType, deliverableFrequency, onDeliverablesRecorded }: RecordDeliverablesDialogProps) {
+export function RecordDeliverablesDialog({ children, jobId, workers, deliverableType, deliverableFrequency, payStructure, onDeliverablesRecorded }: RecordDeliverablesDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [deliverables, setDeliverables] = useState<{ [workerId: string]: string }>({});
+  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,22 +45,48 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
       return;
     }
 
-    const deliverableRecords = Object.entries(deliverables)
-      .filter(([_, value]) => value && parseFloat(value) > 0)
-      .map(([workerId, count]) => ({
-        worker_id: workerId,
+    let deliverableRecords;
+    
+    if (payStructure === 'team_commission') {
+      // For team commission, create one record under a team identifier, not individual workers
+      const teamTotal = parseInt(deliverables['team_total'] || '0');
+      if (teamTotal === 0) {
+        toast({
+          title: "No Data",
+          description: "Please enter the team deliverables total.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Create a single record for the team total using the first worker's ID as team representative
+      // This ensures team deliverables are not attributed to individuals
+      deliverableRecords = [{
+        worker_id: workers[0]?.id || '', // Use first worker as team representative
         job_id: jobId,
         deliverable_date: selectedDate.toISOString().split('T')[0],
-        quantity: parseInt(count)
-      }));
+        quantity: teamTotal,
+        is_team_record: true // Flag to identify this as a team record
+      }];
+    } else {
+      // Individual worker deliverables
+      deliverableRecords = Object.entries(deliverables)
+        .filter(([_, value]) => value && parseFloat(value) > 0)
+        .map(([workerId, count]) => ({
+          worker_id: workerId,
+          job_id: jobId,
+          deliverable_date: selectedDate.toISOString().split('T')[0],
+          quantity: parseInt(count)
+        }));
 
-    if (deliverableRecords.length === 0) {
-      toast({
-        title: "No Data",
-        description: "Please enter deliverable counts for at least one worker.",
-        variant: "destructive",
-      });
-      return;
+      if (deliverableRecords.length === 0) {
+        toast({
+          title: "No Data",
+          description: "Please enter deliverable counts for at least one worker.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     try {
@@ -130,36 +158,73 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
             </Popover>
           </div>
 
-          <div className="space-y-2">
-            <Label>Worker Deliverables</Label>
-            <div className="space-y-3 max-h-64 overflow-y-auto">
-              {workers.map((worker) => (
-                <div key={worker.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-medium">{worker.name}</p>
-                    <p className="text-sm text-muted-foreground">{worker.role}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      placeholder="0"
-                      value={deliverables[worker.id] || ""}
-                      onChange={(e) => updateWorkerDeliverables(worker.id, e.target.value)}
-                      className="w-20 text-center"
-                    />
-                    <span className="text-sm text-muted-foreground">items</span>
-                  </div>
+          {payStructure === 'team_commission' ? (
+            <div className="space-y-2">
+              <Label>Team Deliverables Total</Label>
+              <div className="p-4 border rounded-lg bg-blue-50">
+                <p className="text-sm text-muted-foreground mb-2">
+                  For pool commission jobs, record the total team deliverables for the day.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    value={deliverables['team_total'] || ""}
+                    onChange={(e) => setDeliverables({ team_total: e.target.value })}
+                    className="w-32 text-center"
+                  />
+                  <span className="text-sm text-muted-foreground">total items</span>
                 </div>
-              ))}
+              </div>
             </div>
-            {workers.length === 0 && (
-              <p className="text-sm text-muted-foreground p-4 text-center border rounded-lg">
-                No workers assigned to this job yet.
-              </p>
-            )}
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Worker Deliverables</Label>
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search workers..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {workers
+                  .filter(worker => 
+                    worker.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    worker.role.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                  .map((worker) => (
+                  <div key={worker.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex-1">
+                      <p className="font-medium">{worker.name}</p>
+                      <p className="text-sm text-muted-foreground">{worker.role}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        placeholder="0"
+                        value={deliverables[worker.id] || ""}
+                        onChange={(e) => updateWorkerDeliverables(worker.id, e.target.value)}
+                        className="w-20 text-center"
+                      />
+                      <span className="text-sm text-muted-foreground">items</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {workers.length === 0 && payStructure !== 'team_commission' && (
+            <p className="text-sm text-muted-foreground p-4 text-center border rounded-lg">
+              No workers assigned to this job yet.
+            </p>
+          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>

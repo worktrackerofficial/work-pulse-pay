@@ -87,7 +87,7 @@ export default function Dashboard() {
         .eq('status', 'pending');
       
       const totalPendingAmount = pendingPayoutsData?.reduce((sum, payout) => sum + Number(payout.total_payout), 0) || 0;
-      const pendingPayouts = `$${totalPendingAmount.toLocaleString()}`;
+      const pendingPayouts = `KShs ${totalPendingAmount.toLocaleString()}`;
 
       setStats({
         activeWorkers: workersResult.count || 0,
@@ -119,17 +119,17 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Dashboard</h1>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button className="bg-gradient-to-r from-primary to-primary-glow">
+            <Button className="bg-gradient-to-r from-primary to-primary-glow w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               Quick Actions
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onClick={() => navigate('/jobs')}>
               <Briefcase className="mr-2 h-4 w-4" />
               Create New Job
@@ -147,7 +147,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Active Workers"
           value={loading ? "..." : stats.activeWorkers}
@@ -177,7 +177,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Recent Activity */}
         <Card className="shadow-card">
           <CardHeader>

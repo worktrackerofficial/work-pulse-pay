@@ -49,7 +49,8 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
     flatRate: 0,
     hourlyRate: 0,
     paymentFrequency: "Weekly",
-    excludedDays: [] as string[]
+    excludedDays: [] as string[],
+    commissionPool: 0
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,6 +92,7 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
         hourly_rate: formData.hourlyRate,
         payment_frequency: formData.paymentFrequency,
         excluded_days: formData.excludedDays,
+        commission_pool: formData.commissionPool,
         user_id: user.id
       }).select().single();
 
@@ -126,7 +128,8 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
         flatRate: 0,
         hourlyRate: 0,
         paymentFrequency: "Weekly",
-        excludedDays: []
+        excludedDays: [],
+        commissionPool: 0
       });
       
       setOpen(false);
@@ -262,65 +265,83 @@ export function CreateJobDialog({ children, onJobCreated }: CreateJobDialogProps
                 <SelectItem value="flat">Flat Rate</SelectItem>
                 <SelectItem value="hourly">Hourly</SelectItem>
                 <SelectItem value="commission_adjusted">Commission Adjusted</SelectItem>
+                <SelectItem value="team_commission">Team Commission (Days Worked)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {formData.payStructure === 'commission' && (
             <div className="space-y-2">
-              <Label htmlFor="commissionPerItem">Commission Per Item ($)</Label>
+              <Label htmlFor="commissionPerItem">Commission Per Item (KShs)</Label>
               <Input
                 id="commissionPerItem"
                 type="number"
                 step="0.01"
                 value={formData.commissionPerItem}
                 onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: parseFloat(e.target.value) || 0 }))}
-                placeholder="2.50"
+                placeholder="10.00"
               />
             </div>
           )}
 
           {formData.payStructure === 'flat' && (
             <div className="space-y-2">
-              <Label htmlFor="flatRate">Flat Rate ($)</Label>
+              <Label htmlFor="flatRate">Flat Rate (KShs)</Label>
               <Input
                 id="flatRate"
                 type="number"
                 step="0.01"
                 value={formData.flatRate}
                 onChange={(e) => setFormData(prev => ({ ...prev, flatRate: parseFloat(e.target.value) || 0 }))}
-                placeholder="100.00"
+                placeholder="500.00"
               />
             </div>
           )}
 
           {formData.payStructure === 'hourly' && (
             <div className="space-y-2">
-              <Label htmlFor="hourlyRate">Hourly Rate ($)</Label>
+              <Label htmlFor="hourlyRate">Hourly Rate (KShs)</Label>
               <Input
                 id="hourlyRate"
                 type="number"
                 step="0.01"
                 value={formData.hourlyRate}
                 onChange={(e) => setFormData(prev => ({ ...prev, hourlyRate: parseFloat(e.target.value) || 0 }))}
-                placeholder="15.00"
+                placeholder="150.00"
               />
             </div>
           )}
 
           {formData.payStructure === 'commission_adjusted' && (
             <div className="space-y-2">
-              <Label htmlFor="commissionPerItem">Commission Per Item ($)</Label>
+              <Label htmlFor="commissionPerItem">Commission Per Item (KShs)</Label>
               <Input
                 id="commissionPerItem"
                 type="number"
                 step="0.01"
                 value={formData.commissionPerItem}
                 onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: parseFloat(e.target.value) || 0 }))}
-                placeholder="2.50"
+                placeholder="10.00"
               />
               <p className="text-xs text-muted-foreground">
                 Commission will be adjusted based on days worked vs expected days
+              </p>
+            </div>
+          )}
+
+          {formData.payStructure === 'team_commission' && (
+            <div className="space-y-2">
+              <Label htmlFor="commissionPerItem">Commission Per Item (KShs)</Label>
+              <Input
+                id="commissionPerItem"
+                type="number"
+                step="0.01"
+                value={formData.commissionPerItem}
+                onChange={(e) => setFormData(prev => ({ ...prev, commissionPerItem: parseFloat(e.target.value) || 0 }))}
+                placeholder="10.00"
+              />
+              <p className="text-xs text-muted-foreground">
+                Commission rate per deliverable item. Total commission pool will be calculated as: Total Deliverables × Commission Rate. Pool is then distributed among team members based on days worked.
               </p>
             </div>
           )}

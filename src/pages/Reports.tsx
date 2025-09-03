@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BarChart3, Download, Calendar, TrendingUp } from "lucide-react";
+import { BarChart3, Download, Calendar, TrendingUp, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -74,6 +74,7 @@ export default function Reports() {
         .from('attendance')
         .select(`
           worker_id,
+          job_id,
           attendance_date,
           status,
           workers (name),
@@ -83,7 +84,7 @@ export default function Reports() {
         .lte('attendance_date', getDateRange().end);
 
       if (selectedJob !== 'all-jobs') {
-        attendanceQuery = attendanceQuery.eq('jobs.id', selectedJob);
+        attendanceQuery = attendanceQuery.eq('job_id', selectedJob);
       }
 
       const { data: attendanceData, error: attendanceError } = await attendanceQuery;
@@ -94,6 +95,7 @@ export default function Reports() {
         .from('deliverables')
         .select(`
           worker_id,
+          job_id,
           quantity,
           deliverable_date,
           workers (name),
@@ -103,7 +105,7 @@ export default function Reports() {
         .lte('deliverable_date', getDateRange().end);
 
       if (selectedJob !== 'all-jobs') {
-        deliverablesQuery = deliverablesQuery.eq('jobs.id', selectedJob);
+        deliverablesQuery = deliverablesQuery.eq('job_id', selectedJob);
       }
 
       const { data: deliverablesData, error: deliverablesError } = await deliverablesQuery;
@@ -111,9 +113,19 @@ export default function Reports() {
       if (deliverablesError) throw deliverablesError;
 
       // Calculate reports from real data
-      const calculatedReports = calculateReports(attendanceData || [], deliverablesData || []);
-      setReports(calculatedReports);
-      calculateStats(calculatedReports, attendanceData || [], deliverablesData || []);
+      const calculatedReports = await calculateReports(attendanceData || [], deliverablesData || []);
+      
+      // Apply job filter to calculated reports if needed
+      const filteredReports = selectedJob !== 'all-jobs' 
+        ? calculatedReports.filter(report => {
+            // Find the job by name since we have job names in reports
+            const job = jobs.find(j => j.name === report.job_name);
+            return job?.id === selectedJob;
+          })
+        : calculatedReports;
+      
+      setReports(filteredReports);
+      calculateStats(filteredReports, attendanceData || [], deliverablesData || []);
       
     } catch (error) {
       console.error('Error fetching reports:', error);
@@ -178,83 +190,121 @@ export default function Reports() {
     window.URL.revokeObjectURL(url);
   };
 
-  const calculateReports = (attendance: any[], deliverables: any[]): ReportData[] => {
-    // Group by worker and calculate payouts
-    const workerMap = new Map();
+  const calculateReports = async (attendance: any[], deliverables: any[]): Promise<ReportData[]> => {
+    // Fetch all payout data from database
+    const { data: payoutsData } = await supabase
+      .from('payouts')
+      .select('*');
+
+    // Filter for approved/processed payouts only
+    const approvedPayouts = payoutsData?.filter(payout => 
+      payout.status === 'approved' || payout.status === 'processed'
+    ) || [];
+
+    // If no approved payouts, return empty array
+    if (approvedPayouts.length === 0) {
+      return [];
+    }
+
+    // Calculate total expected working days for the period
+    const today = new Date();
+    const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     
-    attendance.forEach(record => {
-      const key = record.worker_id;
-      if (!workerMap.has(key)) {
-        workerMap.set(key, {
-          worker_name: record.workers?.name || 'Unknown',
-          job_name: record.jobs?.name || 'Unknown',
-          days_worked: 0,
-          total_days: 0,
-          deliverables: 0,
-          base_pay: 0,
-          commission: 0,
-          total_payout: 0,
-          status: 'processed',
-          pay_structure: record.jobs?.pay_structure,
-          flat_rate: record.jobs?.flat_rate || 0,
-          commission_per_item: record.jobs?.commission_per_item || 0,
-          hourly_rate: record.jobs?.hourly_rate || 0
-        });
+    const calculateWorkingDays = (start: Date, end: Date) => {
+      let workingDays = 0;
+      const current = new Date(start);
+      while (current <= end) {
+        const dayOfWeek = current.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday (0) or Saturday (6)
+          workingDays++;
+        }
+        current.setDate(current.getDate() + 1);
       }
-      
-      const worker = workerMap.get(key);
-      worker.total_days++;
-      if (record.status === 'present') {
-        worker.days_worked++;
-      }
-    });
+      return workingDays;
+    };
+    
+    const totalExpectedDays = calculateWorkingDays(periodStart, periodEnd);
 
-    deliverables.forEach(record => {
-      const key = record.worker_id;
-      if (workerMap.has(key)) {
-        const worker = workerMap.get(key);
-        worker.deliverables += record.quantity;
-      }
-    });
+    // Create reports directly from approved payout data
+    const reports = await Promise.all(approvedPayouts.map(async (payout) => {
+      // Get worker and job details
+      const { data: workerData } = await supabase
+        .from('workers')
+        .select('name')
+        .eq('id', payout.worker_id)
+        .single();
 
-    // Calculate payouts for each worker
-    return Array.from(workerMap.values()).map(worker => {
-      let basePay = 0;
-      let commission = 0;
-      
-      switch (worker.pay_structure) {
-        case 'flat_rate':
-          basePay = worker.flat_rate * worker.days_worked;
-          break;
-        case 'commission':
-          commission = worker.commission_per_item * worker.deliverables;
-          break;
-        case 'hourly':
-          basePay = worker.hourly_rate * worker.days_worked * 8; // 8 hours per day
-          break;
-      }
-      
+      const { data: jobData } = await supabase
+        .from('jobs')
+        .select('name')
+        .eq('id', payout.job_id)
+        .single();
+
+      // Count days worked for this worker-job combination
+      const daysWorked = attendance.filter(record => 
+        record.worker_id === payout.worker_id && 
+        record.job_id === payout.job_id && 
+        record.status === 'present'
+      ).length;
+
+      // Count deliverables for this worker-job combination
+      const totalDeliverables = deliverables
+        .filter(record => 
+          record.worker_id === payout.worker_id && 
+          record.job_id === payout.job_id
+        )
+        .reduce((sum, record) => sum + record.quantity, 0);
+
       return {
-        worker_name: worker.worker_name,
-        job_name: worker.job_name,
-        period: "Current Period",
-        days_worked: worker.days_worked,
-        total_days: worker.total_days,
-        deliverables: worker.deliverables,
-        base_pay: basePay,
-        commission: commission,
-        total_payout: basePay + commission,
-        status: worker.status
+        worker_name: workerData?.name || 'Unknown',
+        job_name: jobData?.name || 'Unknown',
+        period: `${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`,
+        days_worked: daysWorked,
+        total_days: totalExpectedDays,
+        deliverables: totalDeliverables,
+        base_pay: payout.base_pay || 0,
+        commission: payout.commission || 0,
+        total_payout: payout.total_payout || 0,
+        status: payout.status
       };
-    });
+    }));
+
+    return reports;
   };
 
-  const calculateStats = (reports: ReportData[], attendance: any[], deliverables: any[]) => {
+  const exportToCSV = () => {
+    const csvContent = [
+      ['Worker', 'Job', 'Period', 'Days Worked', 'Total Days', 'Deliverables', 'Base Pay', 'Commission', 'Total Payout', 'Status'],
+      ...reports.map(report => [
+        report.worker_name,
+        report.job_name,
+        report.period,
+        report.days_worked,
+        report.total_days,
+        report.deliverables,
+        `KShs ${report.base_pay}`,
+        `KShs ${report.commission}`,
+        `KShs ${report.total_payout}`,
+        report.status
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reports-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const calculateStats = (reports: ReportData[], attendanceData: any[], deliverablesData: any[]) => {
     const totalPayouts = reports.reduce((sum, r) => sum + r.total_payout, 0);
-    const avgAttendance = attendance.length > 0 
-      ? (attendance.filter(a => a.status === 'present').length / attendance.length) * 100 
+    const avgAttendance = attendanceData.length > 0 
+      ? (attendanceData.filter(a => a.status === 'present').length / attendanceData.length) * 100 
       : 0;
-    const deliverablesMet = deliverables.reduce((sum, d) => sum + d.quantity, 0);
+    const deliverablesMet = deliverablesData.reduce((sum, d) => sum + d.quantity, 0);
     const efficiencyRate = reports.length > 0 
       ? (reports.reduce((sum, r) => sum + (r.days_worked / r.total_days), 0) / reports.length) * 100 
       : 0;
@@ -267,17 +317,13 @@ export default function Reports() {
     });
   };
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Reports & Analytics</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => fetchReports()}>
-            <Calendar className="mr-2 h-4 w-4" />
-            Refresh Data
-          </Button>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow" onClick={exportToExcel}>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Reports</h1>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button className="bg-gradient-to-r from-primary to-primary-glow w-full sm:w-auto" onClick={exportToCSV}>
             <Download className="mr-2 h-4 w-4" />
-            Export to Excel
+            Export CSV
           </Button>
         </div>
       </div>
@@ -285,9 +331,9 @@ export default function Reports() {
       {/* Report Filters */}
       <Card className="shadow-card">
         <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <Select value={selectedJob} onValueChange={setSelectedJob}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Select Job" />
               </SelectTrigger>
               <SelectContent>
@@ -298,7 +344,7 @@ export default function Reports() {
               </SelectContent>
             </Select>
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Select Period" />
               </SelectTrigger>
               <SelectContent>
@@ -309,7 +355,7 @@ export default function Reports() {
               </SelectContent>
             </Select>
             <Select value={selectedReportType} onValueChange={setSelectedReportType}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder="Report Type" />
               </SelectTrigger>
               <SelectContent>
@@ -323,7 +369,7 @@ export default function Reports() {
       </Card>
 
       {/* Summary Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-card">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -373,34 +419,35 @@ export default function Reports() {
             Detailed Payout Report
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Worker</TableHead>
-                <TableHead>Job</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead>Days Worked</TableHead>
-                <TableHead>Deliverables</TableHead>
-                <TableHead>Base Pay</TableHead>
-                <TableHead>Commission</TableHead>
-                <TableHead>Total Payout</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
+        <CardContent className="overflow-x-auto">
+          <div className="min-w-[800px]">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8">Loading reports...</TableCell>
+                  <TableHead className="min-w-[120px]">Worker</TableHead>
+                  <TableHead className="min-w-[120px]">Job</TableHead>
+                  <TableHead className="min-w-[140px]">Period</TableHead>
+                  <TableHead className="min-w-[100px]">Days Worked</TableHead>
+                  <TableHead className="min-w-[100px]">Deliverables</TableHead>
+                  <TableHead className="min-w-[100px]">Base Pay</TableHead>
+                  <TableHead className="min-w-[100px]">Commission</TableHead>
+                  <TableHead className="min-w-[120px]">Total Payout</TableHead>
+                  <TableHead className="min-w-[100px]">Status</TableHead>
                 </TableRow>
-              ) : reports.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No data available</TableCell>
-                </TableRow>
-              ) : (
-                reports.map((report, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{report.worker_name}</TableCell>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8">Loading reports...</TableCell>
+                  </TableRow>
+                ) : reports.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No data available</TableCell>
+                  </TableRow>
+                ) : (
+                  reports.map((report, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">{report.worker_name}</TableCell>
                     <TableCell>{report.job_name}</TableCell>
                     <TableCell>{report.period}</TableCell>
                     <TableCell>
@@ -414,16 +461,19 @@ export default function Reports() {
                       <span className={`px-2 py-1 rounded-full text-xs ${
                         report.status === 'processed' 
                           ? 'bg-success text-success-foreground' 
+                          : report.status === 'approved'
+                          ? 'bg-primary text-primary-foreground'
                           : 'bg-warning text-warning-foreground'
                       }`}>
                         {report.status}
                       </span>
                     </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

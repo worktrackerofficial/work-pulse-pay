@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Search } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +28,7 @@ export function RecordAttendanceDialog({ children, jobId, workers, onAttendanceR
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [attendance, setAttendance] = useState<{ [workerId: string]: boolean }>({});
+  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -119,8 +121,22 @@ export function RecordAttendanceDialog({ children, jobId, workers, onAttendanceR
 
           <div className="space-y-2">
             <Label>Mark Present Workers</Label>
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search workers..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {workers.map((worker) => (
+              {workers
+                .filter(worker => 
+                  worker.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  worker.role.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+                .map((worker) => (
                 <div key={worker.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div>
                     <p className="font-medium">{worker.name}</p>

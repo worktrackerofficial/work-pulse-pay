@@ -108,52 +108,14 @@ export default function Payouts() {
 
   const fetchPayoutsData = async () => {
     try {
-      // First try to fetch stored payouts
+      // First check for existing stored payouts
       const { data: storedPayouts, error: payoutsError } = await supabase
         .from('payouts')
         .select('*');
 
       if (payoutsError) throw payoutsError;
 
-      if (storedPayouts && storedPayouts.length > 0) {
-        // Fetch worker and job names separately
-        const workerIds = [...new Set(storedPayouts.map(p => p.worker_id))];
-        const jobIds = [...new Set(storedPayouts.map(p => p.job_id))];
-
-        const { data: workers } = await supabase
-          .from('workers')
-          .select('id, name')
-          .in('id', workerIds);
-
-        const { data: jobs } = await supabase
-          .from('jobs')
-          .select('id, name')
-          .in('id', jobIds);
-
-        const workerMap = new Map(workers?.map(w => [w.id, w.name]) || []);
-        const jobMap = new Map(jobs?.map(j => [j.id, j.name]) || []);
-
-        // Use stored payouts with proper formatting
-        const formattedPayouts = storedPayouts.map(payout => ({
-          id: payout.id,
-          worker_name: workerMap.get(payout.worker_id) || 'Unknown',
-          job_name: jobMap.get(payout.job_id) || 'Unknown',
-          days_worked: payout.days_worked,
-          total_days: payout.total_days,
-          deliverables: payout.deliverables,
-          target_deliverables: payout.target_deliverables,
-          base_pay: Number(payout.base_pay),
-          commission: Number(payout.commission),
-          total_payout: Number(payout.total_payout),
-          status: payout.status,
-          payment_type: payout.payment_type,
-          period: `${new Date(payout.period_start).toLocaleDateString()} - ${new Date(payout.period_end).toLocaleDateString()}`
-        }));
-        setPayoutsData(formattedPayouts);
-        return;
-      }
-
-      // If no stored payouts, calculate from attendance and deliverables
+      // Always fetch fresh attendance and deliverables data
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
@@ -169,7 +131,8 @@ export default function Payouts() {
             flat_rate,
             commission_per_item,
             hourly_rate,
-            target_deliverable
+            target_deliverable,
+            commission_pool
           )
         `);
 
@@ -188,8 +151,8 @@ export default function Payouts() {
 
       if (deliverablesError) throw deliverablesError;
 
-      // Calculate and store payouts
-      const calculatedPayouts = await calculateAndStorePayouts(attendanceData || [], deliverablesData || []);
+      // Calculate fresh payouts from current data
+      const calculatedPayouts = await calculateAndStorePayouts(attendanceData || [], deliverablesData || [], storedPayouts || []);
       setPayoutsData(calculatedPayouts);
       
     } catch (error) {
@@ -199,8 +162,29 @@ export default function Payouts() {
     }
   };
 
-  const calculateAndStorePayouts = async (attendance: any[], deliverables: any[]): Promise<PayoutData[]> => {
+  const calculateAndStorePayouts = async (attendance: any[], deliverables: any[], existingPayouts: any[] = []): Promise<PayoutData[]> => {
     const workerMap = new Map();
+    
+    // Calculate total expected working days for the period
+    const today = new Date();
+    const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    
+    // Calculate working days (excluding weekends)
+    const calculateWorkingDays = (start: Date, end: Date) => {
+      let workingDays = 0;
+      const current = new Date(start);
+      while (current <= end) {
+        const dayOfWeek = current.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday (0) or Saturday (6)
+          workingDays++;
+        }
+        current.setDate(current.getDate() + 1);
+      }
+      return workingDays;
+    };
+    
+    const totalExpectedDays = calculateWorkingDays(periodStart, periodEnd);
     
     // Process attendance data
     attendance.forEach(record => {
@@ -213,7 +197,7 @@ export default function Payouts() {
           worker_name: record.workers?.name || 'Unknown',
           job_name: record.jobs?.name || 'Unknown',
           days_worked: 0,
-          total_days: 0,
+          total_days: totalExpectedDays,
           deliverables: 0,
           target_deliverables: record.jobs?.target_deliverable || 0,
           base_pay: 0,
@@ -224,12 +208,12 @@ export default function Payouts() {
           pay_structure: record.jobs?.pay_structure,
           flat_rate: record.jobs?.flat_rate || 0,
           commission_per_item: record.jobs?.commission_per_item || 0,
-          hourly_rate: record.jobs?.hourly_rate || 0
+          hourly_rate: record.jobs?.hourly_rate || 0,
+          commission_pool: record.jobs?.commission_pool || 0
         });
       }
       
       const worker = workerMap.get(key);
-      worker.total_days++;
       if (record.status === 'present') {
         worker.days_worked++;
       }
@@ -241,14 +225,29 @@ export default function Payouts() {
       if (workerMap.has(key)) {
         const worker = workerMap.get(key);
         worker.deliverables += record.quantity;
+      } else {
+        // For team commission jobs, deliverables might be recorded under a team representative
+        // We need to distribute them to all workers in the same job
+        const jobWorkers = Array.from(workerMap.values()).filter(w => w.job_id === record.job_id);
+        if (jobWorkers.length > 0 && jobWorkers[0].pay_structure === 'team_commission') {
+          jobWorkers.forEach(worker => {
+            worker.deliverables += record.quantity / jobWorkers.length;
+          });
+        }
       }
     });
 
     // Calculate payouts and store them
     const payoutRecords = [];
-    const today = new Date();
-    const periodStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const periodEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    // Group workers by job for team commission calculation
+    const jobGroups = new Map();
+    for (const worker of workerMap.values()) {
+      if (!jobGroups.has(worker.job_id)) {
+        jobGroups.set(worker.job_id, []);
+      }
+      jobGroups.get(worker.job_id).push(worker);
+    }
 
     for (const worker of workerMap.values()) {
       let basePay = 0;
@@ -263,6 +262,18 @@ export default function Payouts() {
           break;
         case 'hourly':
           basePay = worker.hourly_rate * worker.days_worked * 8;
+          break;
+        case 'team_commission':
+          // Calculate team commission based on days worked and total deliverables
+          const jobWorkers = jobGroups.get(worker.job_id) || [];
+          const totalDaysWorkedByTeam = jobWorkers.reduce((sum, w) => sum + w.days_worked, 0);
+          const totalDeliverablesForJob = jobWorkers.reduce((sum, w) => sum + w.deliverables, 0);
+          const commissionPool = totalDeliverablesForJob * worker.commission_per_item;
+          
+          if (totalDaysWorkedByTeam > 0) {
+            const workerShare = worker.days_worked / totalDaysWorkedByTeam;
+            commission = commissionPool * workerShare;
+          }
           break;
       }
       
@@ -287,49 +298,118 @@ export default function Payouts() {
       payoutRecords.push(payoutRecord);
     }
 
-    // Store payouts in database
-    if (payoutRecords.length > 0) {
+    // Only store new payouts that don't already exist
+    const existingPayoutKeys = new Set(existingPayouts.map(p => `${p.worker_id}-${p.job_id}-${p.period_start}`));
+    const newPayoutRecords = payoutRecords.filter(record => 
+      !existingPayoutKeys.has(`${record.worker_id}-${record.job_id}-${record.period_start}`)
+    );
+
+    if (newPayoutRecords.length > 0) {
       const { error } = await supabase
         .from('payouts')
-        .insert(payoutRecords);
+        .insert(newPayoutRecords);
       
       if (error) {
         console.error('Error storing payouts:', error);
       }
     }
 
-    // Return formatted data
-    return Array.from(workerMap.values()).map(worker => {
-      let basePay = 0;
-      let commission = 0;
-      
-      switch (worker.pay_structure) {
-        case 'flat_rate':
-          basePay = worker.flat_rate * worker.days_worked;
-          break;
-        case 'commission':
-          commission = worker.commission_per_item * worker.deliverables;
-          break;
-        case 'hourly':
-          basePay = worker.hourly_rate * worker.days_worked * 8;
-          break;
-      }
-      
-      return {
-        id: worker.id,
-        worker_name: worker.worker_name,
-        job_name: worker.job_name,
-        days_worked: worker.days_worked,
-        total_days: worker.total_days,
-        deliverables: worker.deliverables,
-        target_deliverables: worker.target_deliverables,
-        base_pay: basePay,
-        commission: commission,
-        total_payout: basePay + commission,
-        status: 'pending',
-        payment_type: worker.payment_type
-      };
+    // Merge existing payouts with calculated ones, prioritizing existing approved/processed payouts
+    const existingPayoutMap = new Map();
+    existingPayouts.forEach(payout => {
+      const key = `${payout.worker_id}-${payout.job_id}`;
+      existingPayoutMap.set(key, payout);
     });
+
+    // Return formatted data combining existing and calculated payouts
+    const allPayouts = [];
+    
+    // Add existing payouts first
+    if (existingPayouts.length > 0) {
+      const workerIds = [...new Set(existingPayouts.map(p => p.worker_id))];
+      const jobIds = [...new Set(existingPayouts.map(p => p.job_id))];
+
+      const { data: workers } = await supabase
+        .from('workers')
+        .select('id, name')
+        .in('id', workerIds);
+
+      const { data: jobs } = await supabase
+        .from('jobs')
+        .select('id, name')
+        .in('id', jobIds);
+
+      const workerNameMap = new Map(workers?.map(w => [w.id, w.name]) || []);
+      const jobNameMap = new Map(jobs?.map(j => [j.id, j.name]) || []);
+
+      existingPayouts.forEach(payout => {
+        allPayouts.push({
+          id: payout.id,
+          worker_name: workerNameMap.get(payout.worker_id) || 'Unknown',
+          job_name: jobNameMap.get(payout.job_id) || 'Unknown',
+          days_worked: payout.days_worked,
+          total_days: payout.total_days,
+          deliverables: payout.deliverables,
+          target_deliverables: payout.target_deliverables,
+          base_pay: Number(payout.base_pay),
+          commission: Number(payout.commission),
+          total_payout: Number(payout.total_payout),
+          status: payout.status,
+          payment_type: payout.payment_type,
+          period: `${new Date(payout.period_start).toLocaleDateString()} - ${new Date(payout.period_end).toLocaleDateString()}`
+        });
+      });
+    }
+
+    // Add new calculated payouts for workers not already in existing payouts
+    Array.from(workerMap.values()).forEach(worker => {
+      const key = `${worker.worker_id}-${worker.job_id}`;
+      if (!existingPayoutMap.has(key)) {
+        let basePay = 0;
+        let commission = 0;
+        
+        switch (worker.pay_structure) {
+          case 'flat_rate':
+            basePay = worker.flat_rate * worker.days_worked;
+            break;
+          case 'commission':
+            commission = worker.commission_per_item * worker.deliverables;
+            break;
+          case 'hourly':
+            basePay = worker.hourly_rate * worker.days_worked * 8;
+            break;
+          case 'team_commission':
+            // Calculate team commission based on days worked and total deliverables
+            const jobWorkers = jobGroups.get(worker.job_id) || [];
+            const totalDaysWorkedByTeam = jobWorkers.reduce((sum, w) => sum + w.days_worked, 0);
+            const totalDeliverablesForJob = jobWorkers.reduce((sum, w) => sum + w.deliverables, 0);
+            const commissionPool = totalDeliverablesForJob * worker.commission_per_item;
+            
+            if (totalDaysWorkedByTeam > 0) {
+              const workerShare = worker.days_worked / totalDaysWorkedByTeam;
+              commission = commissionPool * workerShare;
+            }
+            break;
+        }
+        
+        allPayouts.push({
+          id: worker.id,
+          worker_name: worker.worker_name,
+          job_name: worker.job_name,
+          days_worked: worker.days_worked,
+          total_days: worker.total_days,
+          deliverables: worker.deliverables,
+          target_deliverables: worker.target_deliverables,
+          base_pay: basePay,
+          commission: commission,
+          total_payout: basePay + commission,
+          status: 'pending',
+          payment_type: worker.payment_type
+        });
+      }
+    });
+
+    return allPayouts;
   };
 
   const filteredPayouts = (payoutsData.length > 0 ? payoutsData : payouts).filter(payout => {
@@ -455,15 +535,15 @@ export default function Payouts() {
   }, 0) / actualPayouts.length : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Payouts Management</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={recalculatePayouts}>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Payouts Management</h1>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Button variant="outline" onClick={recalculatePayouts} className="w-full sm:w-auto">
             <Calculator className="mr-2 h-4 w-4" />
             Calculate Payouts
           </Button>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow" onClick={exportReport}>
+          <Button className="bg-gradient-to-r from-primary to-primary-glow w-full sm:w-auto" onClick={exportReport}>
             <Download className="mr-2 h-4 w-4" />
             Export Report
           </Button>
@@ -471,13 +551,13 @@ export default function Payouts() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="shadow-card">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pending Payouts</p>
-                <p className="text-2xl font-bold text-warning">${totalPending.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-warning">KShs {totalPending.toLocaleString()}</p>
               </div>
               <DollarSign className="h-8 w-8 text-warning" />
             </div>
@@ -488,7 +568,7 @@ export default function Payouts() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Processed This Period</p>
-                <p className="text-2xl font-bold text-success">${totalProcessed.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-success">KShs {totalProcessed.toLocaleString()}</p>
               </div>
               <DollarSign className="h-8 w-8 text-success" />
             </div>
@@ -499,7 +579,7 @@ export default function Payouts() {
             <div>
               <p className="text-sm text-muted-foreground">Average Payout</p>
               <p className="text-2xl font-bold text-primary">
-                ${Math.round(averagePayout).toLocaleString()}
+                KShs {Math.round(averagePayout).toLocaleString()}
               </p>
             </div>
           </CardContent>
@@ -608,9 +688,9 @@ export default function Payouts() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>${basePay}</TableCell>
-                      <TableCell>${payout.commission}</TableCell>
-                      <TableCell className="font-bold">${totalPayout}</TableCell>
+                      <TableCell>KShs {basePay}</TableCell>
+                      <TableCell>KShs {payout.commission}</TableCell>
+                      <TableCell className="font-bold">KShs {totalPayout}</TableCell>
                       <TableCell>{getStatusBadge(payout.status)}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">

@@ -92,15 +92,17 @@ export default function Workers() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Worker Management</h1>
-        <AddWorkerDialog jobId={0} onWorkerAdded={fetchWorkers}>
-          <Button className="bg-gradient-to-r from-primary to-primary-glow">
-            <Plus className="mr-2 h-4 w-4" />
-            Add New Worker
-          </Button>
-        </AddWorkerDialog>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Workers Management</h1>
+        <div className="w-full sm:w-auto">
+          <AddWorkerDialog onWorkerAdded={fetchWorkers}>
+            <Button className="bg-gradient-to-r from-primary to-primary-glow w-full sm:w-auto">
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Worker
+            </Button>
+          </AddWorkerDialog>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -121,7 +123,7 @@ export default function Workers() {
       </Card>
 
       {/* Workers Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {filteredWorkers.map((worker) => (
           <Card key={worker.id} className="shadow-card hover:shadow-elegant transition-all duration-300">
             <CardHeader>
