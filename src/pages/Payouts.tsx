@@ -135,10 +135,19 @@ export default function Payouts() {
     // Working days completed in the current period **up to today**
     const totalWorkingDaysSoFar = calculateWorkingDays(periodStart, today);
     
+    console.log('Period calculation:', {
+      periodStart: periodStart.toISOString().split('T')[0],
+      periodEnd: periodEnd.toISOString().split('T')[0],
+      today: today.toISOString().split('T')[0],
+      totalExpectedDays,
+      totalWorkingDaysSoFar
+    });
+    
     // Process attendance data
     attendance.forEach(record => {
-      const key = record.worker_id;
+      const key = `${record.worker_id}-${record.job_id}`;
       if (!workerMap.has(key)) {
+
         workerMap.set(key, {
           id: key,
           worker_id: record.worker_id,
@@ -146,7 +155,7 @@ export default function Payouts() {
           worker_name: record.workers?.name || 'Unknown',
           job_name: record.jobs?.name || 'Unknown',
           days_worked: 0,
-          total_days: totalWorkingDaysSoFar,
+          total_days: totalExpectedDays,
           deliverables: 0,
           target_deliverables: record.jobs?.target_deliverable || 0,
           base_pay: 0,
@@ -190,7 +199,7 @@ export default function Payouts() {
 
     jobWorkersData?.forEach(record => {
       if (record.jobs?.pay_structure === 'team_commission') {
-        const key = record.worker_id;
+        const key = `${record.worker_id}-${record.job_id}`;
         if (!workerMap.has(key)) {
           workerMap.set(key, {
             id: key,
@@ -199,7 +208,7 @@ export default function Payouts() {
             worker_name: record.workers?.name || 'Unknown',
             job_name: record.jobs?.name || 'Unknown',
             days_worked: 0,
-            total_days: totalWorkingDaysSoFar,
+            total_days: totalExpectedDays,
             deliverables: 0,
             target_deliverables: record.jobs?.target_deliverable || 0,
             base_pay: 0,
@@ -222,16 +231,36 @@ export default function Payouts() {
 
     // Process individual deliverables data
     // Individual deliverables
+
+    console.log('Processing deliverables:', deliverables?.length || 0, 'records');
     deliverables.forEach(record => {
-      const key = record.worker_id;
+      console.log('Deliverable record:', {
+        workerId: record.worker_id,
+        jobId: record.job_id,
+        quantity: record.quantity
+      });
+      
+      const key = `${record.worker_id}-${record.job_id}`;
+      console.log('Looking for worker-job key:', key);
+      console.log('Available keys in workerMap:', Array.from(workerMap.keys()));
+      
       if (workerMap.has(key)) {
         const worker = workerMap.get(key);
         worker.deliverables += record.quantity;
 
         // accumulate job total
-        jobDeliverableSums.set(record.job_id, (jobDeliverableSums.get(record.job_id) || 0) + record.quantity);
+        const currentJobTotal = jobDeliverableSums.get(record.job_id) || 0;
+        const newJobTotal = currentJobTotal + record.quantity;
+        jobDeliverableSums.set(record.job_id, newJobTotal);
+        console.log(`Updated job ${record.job_id} deliverables: ${currentJobTotal} + ${record.quantity} = ${newJobTotal}`);
+      } else {
+        console.log(`Worker-job combination not found in workerMap: ${key}`);
       }
     });
+    
+    console.log('Final jobDeliverableSums:', Object.fromEntries(jobDeliverableSums));
+    
+
 
 
 
@@ -251,6 +280,7 @@ export default function Payouts() {
       let basePay = 0;
       let commission = 0;
       
+
       switch (worker.pay_structure) {
         case 'flat_rate':
           basePay = worker.flat_rate * worker.days_worked;
@@ -262,25 +292,19 @@ export default function Payouts() {
           basePay = worker.hourly_rate * worker.days_worked * 8;
           break;
         case 'team_commission':
-          // Pool-based job: pool equals *all deliverables for this job so far* × commission_per_item
-          const teamDeliverables = jobDeliverableSums.get(worker.job_id) || 0;
-          const pool = teamDeliverables * worker.commission_per_item;
-          if (pool > 0) {
-            // Calculate total days worked by all team members for this job
-            const jobWorkers = jobGroups.get(worker.job_id) || [];
-            const totalJobDaysWorked = jobWorkers.reduce((sum, w) => sum + w.days_worked, 0);
-            
-            if (totalJobDaysWorked > 0) {
-              const shareRatio = worker.days_worked / totalJobDaysWorked;
-              commission = pool * shareRatio;
-            }
+          // Pool-based job: pool equals job deliverables × commission_per_item so far
+          const pool = (jobDeliverableSums.get(worker.job_id) || 0) * worker.commission_per_item;
+          if (worker.total_days > 0 && pool > 0) {
+            const shareRatio = worker.days_worked / totalWorkingDaysSoFar;
+            commission = pool * shareRatio;
           }
           break;
       }
       
-      const totalPayout = basePay + commission;
-      
       const payoutRecord = {
+        id: worker.id,
+        worker_name: worker.worker_name,
+        job_name: worker.job_name,
         worker_id: worker.worker_id,
         job_id: worker.job_id,
         period_start: periodStart.toISOString().split('T')[0],
@@ -291,7 +315,7 @@ export default function Payouts() {
         target_deliverables: worker.target_deliverables,
         base_pay: basePay,
         commission: commission,
-        total_payout: totalPayout,
+        total_payout: basePay + commission,
         status: 'pending',
         payment_type: worker.payment_type
       };
@@ -380,11 +404,49 @@ export default function Payouts() {
             basePay = worker.hourly_rate * worker.days_worked * 8;
             break;
           case 'team_commission':
-            // Pool-based job: pool equals job deliverables × commission_per_item so far
-            const pool = (jobDeliverableSums.get(worker.job_id) || 0) * worker.commission_per_item;
-            if (worker.total_days > 0 && pool > 0) {
-              const shareRatio = worker.days_worked / totalWorkingDaysSoFar;
-              commission = pool * shareRatio;
+            // For team commission, find deliverables from any job where team members worked
+            let teamDeliverables = jobDeliverableSums.get(worker.job_id) || 0;
+            
+            // If no deliverables for this job, check other jobs for team deliverables
+            if (teamDeliverables === 0) {
+              for (const [delivJobId, delivTotal] of jobDeliverableSums.entries()) {
+                if (delivJobId !== worker.job_id && delivTotal > 0) {
+                  teamDeliverables = delivTotal;
+                  console.log(`Team commission: Found deliverables in job ${delivJobId}: ${teamDeliverables} for worker ${worker.worker_name}`);
+                  break;
+                }
+              }
+            }
+            
+            const pool = teamDeliverables * worker.commission_per_item;
+            console.log(`Team commission calculation for ${worker.worker_name}:`, {
+              teamDeliverables,
+              commissionPerItem: worker.commission_per_item,
+              pool,
+              daysWorked: worker.days_worked,
+              totalDays: worker.total_days
+            });
+            
+            if (pool > 0) {
+              // Calculate total days worked by all team members for this job
+              let totalTeamDaysWorked = 0;
+              for (const [key, w] of workerMap.entries()) {
+                if (w.job_id === worker.job_id && w.pay_structure === 'team_commission') {
+                  totalTeamDaysWorked += w.days_worked;
+                }
+              }
+              
+              console.log(`Team days calculation for ${worker.worker_name}:`, {
+                workerDaysWorked: worker.days_worked,
+                totalTeamDaysWorked,
+                jobId: worker.job_id
+              });
+              
+              if (totalTeamDaysWorked > 0) {
+                const shareRatio = worker.days_worked / totalTeamDaysWorked;
+                commission = pool * shareRatio;
+                console.log(`Final commission for ${worker.worker_name}: ${pool} * ${shareRatio} = ${commission}`);
+              }
             }
             break;
         }
