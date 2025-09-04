@@ -59,15 +59,38 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
         return;
       }
       
-      // Create a single record for the team total using the first worker's ID as team representative
-      // This ensures team deliverables are not attributed to individuals
-      deliverableRecords = [{
-        worker_id: workers[0]?.id || '', // Use first worker as team representative
-        job_id: jobId,
-        deliverable_date: selectedDate.toISOString().split('T')[0],
-        quantity: teamTotal,
-        is_team_record: true // Flag to identify this as a team record
-      }];
+      // For team commission, use the new team_deliverables table
+      try {
+        const { error } = await supabase
+          .from('team_deliverables')
+          .insert([{
+            job_id: jobId,
+            deliverable_date: selectedDate.toLocaleDateString('en-CA'),
+            quantity: teamTotal
+          }]);
+
+        if (error) throw error;
+
+        const totalItems = teamTotal;
+        toast({
+          title: "Team Deliverables Recorded",
+          description: `Total ${totalItems} ${deliverableType.toLowerCase()} recorded for team on ${format(selectedDate, "PPP")}.`,
+        });
+
+        setOpen(false);
+        setSelectedDate(undefined);
+        setDeliverables({});
+        onDeliverablesRecorded?.();
+        return;
+      } catch (error) {
+        console.error('Error recording team deliverables:', error);
+        toast({
+          title: "Error",
+          description: "Failed to record team deliverables. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
     } else {
       // Individual worker deliverables
       deliverableRecords = Object.entries(deliverables)
@@ -75,7 +98,7 @@ export function RecordDeliverablesDialog({ children, jobId, workers, deliverable
         .map(([workerId, count]) => ({
           worker_id: workerId,
           job_id: jobId,
-          deliverable_date: selectedDate.toISOString().split('T')[0],
+          deliverable_date: selectedDate.toLocaleDateString('en-CA'),
           quantity: parseInt(count)
         }));
 

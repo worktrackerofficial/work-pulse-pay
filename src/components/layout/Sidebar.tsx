@@ -28,7 +28,7 @@ export function Sidebar() {
 
   return (
     <aside className={cn(
-      "bg-card border-r min-h-screen sticky top-0 transition-all duration-300",
+      "bg-card border-r h-screen sticky top-0 transition-all duration-300 overflow-y-auto",
       isCollapsed ? "w-16" : "w-64"
     )}>
       <div className="flex items-center justify-between p-4">

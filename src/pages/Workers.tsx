@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AddWorkerDialog } from "@/components/jobs/AddWorkerDialog";
 import { WorkerProfileDialog } from "@/components/workers/WorkerProfileDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Worker {
   id: string;
@@ -26,6 +27,7 @@ export default function Workers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchWorkers();
@@ -33,6 +35,7 @@ export default function Workers() {
 
   const fetchWorkers = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('workers')
         .select(`
@@ -41,24 +44,70 @@ export default function Workers() {
             jobs(name)
           )
         `);
-
-      if (error) {
-        console.error('Error fetching workers:', error);
-        return;
-      }
-
-      // Transform data to include current jobs
-      const transformedWorkers = data?.map(worker => ({
-        ...worker,
-        current_jobs: worker.job_workers?.map((jw: any) => jw.jobs.name) || [],
-        attendance_rate: Math.floor(Math.random() * 10) + 90 // Mock attendance rate
-      })) || [];
-
-      setWorkers(transformedWorkers);
+      
+      if (error) throw error;
+      
+      // Process workers data to include current jobs and attendance rate
+      const processedWorkers = await Promise.all((data || []).map(async (worker) => {
+        // Get current jobs
+        const currentJobs = worker.job_workers?.map((jw: any) => jw.jobs?.name).filter(Boolean) || [];
+        
+        // Calculate attendance rate
+        const { data: attendanceData } = await supabase
+          .from('attendance')
+          .select('status')
+          .eq('worker_id', worker.id);
+        
+        const totalAttendance = attendanceData?.length || 0;
+        const presentDays = attendanceData?.filter(a => a.status === 'present').length || 0;
+        const attendanceRate = totalAttendance > 0 ? (presentDays / totalAttendance) * 100 : 0;
+        
+        return {
+          ...worker,
+          current_jobs: currentJobs,
+          attendance_rate: attendanceRate
+        };
+      }));
+      
+      setWorkers(processedWorkers);
     } catch (error) {
       console.error('Error fetching workers:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch workers",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteWorker = async (workerId: string) => {
+    if (!confirm('Are you sure you want to delete this worker? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('workers')
+        .delete()
+        .eq('id', workerId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Worker deleted successfully",
+      });
+
+      fetchWorkers(); // Refresh the workers list
+    } catch (error) {
+      console.error('Error deleting worker:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete worker",
+        variant: "destructive",
+      });
     }
   };
 
@@ -194,6 +243,13 @@ export default function Workers() {
                     View Profile
                   </Button>
                 </WorkerProfileDialog>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={() => handleDeleteWorker(worker.id)}
+                >
+                  Delete
+                </Button>
               </div>
             </CardContent>
           </Card>

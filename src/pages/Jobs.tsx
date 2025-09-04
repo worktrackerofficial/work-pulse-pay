@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Plus, Search, Calendar, Users, DollarSign, ArrowRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { CreateJobDialog } from "@/components/jobs/CreateJobDialog";
+import { EditJobDialog } from "@/components/jobs/EditJobDialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { useNavigate } from "react-router-dom";
 
 interface Job {
   id: string;
@@ -35,6 +37,7 @@ export default function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchJobs();
@@ -42,32 +45,60 @@ export default function Jobs() {
 
   const fetchJobs = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('jobs')
         .select(`
           *,
-          job_workers!left(
-            id,
-            is_active
-          )
+          job_workers(count)
         `);
 
-      if (error) {
-        console.error('Error fetching jobs:', error);
-        return;
-      }
+      if (error) throw error;
 
-      // Transform data to include worker count
-      const transformedJobs = data?.map(job => ({
+      const jobsWithCount = data?.map(job => ({
         ...job,
-        worker_count: job.job_workers?.filter(jw => jw.is_active).length || 0
+        worker_count: job.job_workers?.[0]?.count || 0
       })) || [];
 
-      setJobs(transformedJobs);
+      setJobs(jobsWithCount);
     } catch (error) {
       console.error('Error fetching jobs:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch jobs",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string) => {
+    if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .delete()
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Job deleted successfully",
+      });
+
+      fetchJobs(); // Refresh the jobs list
+    } catch (error) {
+      console.error('Error deleting job:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete job",
+        variant: "destructive",
+      });
     }
   };
 
@@ -199,7 +230,19 @@ export default function Jobs() {
                   onClick={() => navigate(`/jobs/${job.id}`)}
                 >
                   <ArrowRight className="mr-2 h-4 w-4" />
-                  Manage Job
+                  View Details
+                </Button>
+                <EditJobDialog jobId={job.id} onJobUpdated={fetchJobs}>
+                  <Button variant="outline" size="sm">
+                    Edit
+                  </Button>
+                </EditJobDialog>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={() => handleDeleteJob(job.id)}
+                >
+                  Delete
                 </Button>
               </div>
             </CardContent>

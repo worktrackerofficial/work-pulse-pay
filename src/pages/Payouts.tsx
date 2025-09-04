@@ -132,7 +132,7 @@ export default function Payouts() {
             commission_per_item,
             hourly_rate,
             target_deliverable,
-            commission_pool
+ 
           )
         `);
 
@@ -185,6 +185,8 @@ export default function Payouts() {
     };
     
     const totalExpectedDays = calculateWorkingDays(periodStart, periodEnd);
+    // Working days completed in the current period **up to today**
+    const totalWorkingDaysSoFar = calculateWorkingDays(periodStart, today);
     
     // Process attendance data
     attendance.forEach(record => {
@@ -197,7 +199,7 @@ export default function Payouts() {
           worker_name: record.workers?.name || 'Unknown',
           job_name: record.jobs?.name || 'Unknown',
           days_worked: 0,
-          total_days: totalExpectedDays,
+          total_days: totalWorkingDaysSoFar,
           deliverables: 0,
           target_deliverables: record.jobs?.target_deliverable || 0,
           base_pay: 0,
@@ -208,8 +210,7 @@ export default function Payouts() {
           pay_structure: record.jobs?.pay_structure,
           flat_rate: record.jobs?.flat_rate || 0,
           commission_per_item: record.jobs?.commission_per_item || 0,
-          hourly_rate: record.jobs?.hourly_rate || 0,
-          commission_pool: record.jobs?.commission_pool || 0
+          hourly_rate: record.jobs?.hourly_rate || 0
         });
       }
       
@@ -219,23 +220,73 @@ export default function Payouts() {
       }
     });
 
-    // Process deliverables data
+    // Include workers assigned to team_commission jobs even if they have no attendance yet
+    const { data: jobWorkersData, error: jobWorkersError } = await supabase
+      .from('job_workers')
+      .select(`
+        worker_id,
+        job_id,
+        workers (name),
+        jobs (
+          id,
+          name,
+          pay_structure,
+          flat_rate,
+          commission_per_item,
+          hourly_rate,
+          target_deliverable,
+          commission_pool
+        )
+      `);
+
+    if (jobWorkersError) throw jobWorkersError;
+
+    jobWorkersData?.forEach(record => {
+      if (record.jobs?.pay_structure === 'team_commission') {
+        const key = record.worker_id;
+        if (!workerMap.has(key)) {
+          workerMap.set(key, {
+            id: key,
+            worker_id: record.worker_id,
+            job_id: record.job_id,
+            worker_name: record.workers?.name || 'Unknown',
+            job_name: record.jobs?.name || 'Unknown',
+            days_worked: 0,
+            total_days: totalWorkingDaysSoFar,
+            deliverables: 0,
+            target_deliverables: record.jobs?.target_deliverable || 0,
+            base_pay: 0,
+            commission: 0,
+            total_payout: 0,
+            status: 'pending',
+            payment_type: record.jobs?.pay_structure,
+            pay_structure: record.jobs?.pay_structure,
+            flat_rate: record.jobs?.flat_rate || 0,
+            commission_per_item: record.jobs?.commission_per_item || 0,
+            hourly_rate: record.jobs?.hourly_rate || 0,
+ : record.jobs?.commission_pool || 0
+          });
+        }
+      }
+    });
+
+    // Accumulate deliverables totals per job for pool calculation (individual + team)
+    const jobDeliverableSums = new Map<string, number>();
+
+    // Process individual deliverables data
+    // Individual deliverables
     deliverables.forEach(record => {
       const key = record.worker_id;
       if (workerMap.has(key)) {
         const worker = workerMap.get(key);
         worker.deliverables += record.quantity;
-      } else {
-        // For team commission jobs, deliverables might be recorded under a team representative
-        // We need to distribute them to all workers in the same job
-        const jobWorkers = Array.from(workerMap.values()).filter(w => w.job_id === record.job_id);
-        if (jobWorkers.length > 0 && jobWorkers[0].pay_structure === 'team_commission') {
-          jobWorkers.forEach(worker => {
-            worker.deliverables += record.quantity / jobWorkers.length;
-          });
-        }
+
+        // accumulate job total
+        jobDeliverableSums.set(record.job_id, (jobDeliverableSums.get(record.job_id) || 0) + record.quantity);
       }
     });
+
+
 
     // Calculate payouts and store them
     const payoutRecords = [];
@@ -264,15 +315,11 @@ export default function Payouts() {
           basePay = worker.hourly_rate * worker.days_worked * 8;
           break;
         case 'team_commission':
-          // Calculate team commission based on days worked and total deliverables
-          const jobWorkers = jobGroups.get(worker.job_id) || [];
-          const totalDaysWorkedByTeam = jobWorkers.reduce((sum, w) => sum + w.days_worked, 0);
-          const totalDeliverablesForJob = jobWorkers.reduce((sum, w) => sum + w.deliverables, 0);
-          const commissionPool = totalDeliverablesForJob * worker.commission_per_item;
-          
-          if (totalDaysWorkedByTeam > 0) {
-            const workerShare = worker.days_worked / totalDaysWorkedByTeam;
-            commission = commissionPool * workerShare;
+          // Pool-based job: pool equals *all deliverables for this job so far* × commission_per_item
+          const pool = (jobDeliverableSums.get(worker.job_id) || 0) * worker.commission_per_item;
+          if (worker.total_days > 0 && pool > 0) {
+            const shareRatio = worker.days_worked / totalWorkingDaysSoFar;
+            commission = pool * shareRatio;
           }
           break;
       }
@@ -286,7 +333,7 @@ export default function Payouts() {
         period_end: periodEnd.toISOString().split('T')[0],
         days_worked: worker.days_worked,
         total_days: worker.total_days,
-        deliverables: worker.deliverables,
+        deliverables: worker.pay_structure === 'team_commission' ? 0 : worker.deliverables,
         target_deliverables: worker.target_deliverables,
         base_pay: basePay,
         commission: commission,
@@ -379,15 +426,11 @@ export default function Payouts() {
             basePay = worker.hourly_rate * worker.days_worked * 8;
             break;
           case 'team_commission':
-            // Calculate team commission based on days worked and total deliverables
-            const jobWorkers = jobGroups.get(worker.job_id) || [];
-            const totalDaysWorkedByTeam = jobWorkers.reduce((sum, w) => sum + w.days_worked, 0);
-            const totalDeliverablesForJob = jobWorkers.reduce((sum, w) => sum + w.deliverables, 0);
-            const commissionPool = totalDeliverablesForJob * worker.commission_per_item;
-            
-            if (totalDaysWorkedByTeam > 0) {
-              const workerShare = worker.days_worked / totalDaysWorkedByTeam;
-              commission = commissionPool * workerShare;
+            // Pool-based job: pool equals job deliverables × commission_per_item so far
+            const pool = (jobDeliverableSums.get(worker.job_id) || 0) * worker.commission_per_item;
+            if (worker.total_days > 0 && pool > 0) {
+              const shareRatio = worker.days_worked / totalWorkingDaysSoFar;
+              commission = pool * shareRatio;
             }
             break;
         }
@@ -669,24 +712,31 @@ export default function Payouts() {
                       </TableCell>
                       <TableCell>{'period' in payout ? payout.period : 'Current Period'}</TableCell>
                       <TableCell>
-                        {daysWorked}/{totalDays} days
+                        {`${daysWorked}/${totalDays}`} days
                       </TableCell>
                       <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span>{payout.deliverables}/{targetDeliverables}</span>
-                            <span>{Math.round((payout.deliverables / targetDeliverables) * 100)}%</span>
+                        {paymentType === 'team_commission' ? (
+                          <div className="text-center">
+                            <span className="text-sm text-muted-foreground">Team Pool</span>
+                            <p className="text-xs text-primary">Based on days worked</p>
                           </div>
-                          <div className="w-full bg-muted rounded-full h-1">
-                            <div 
-                              className={`h-1 rounded-full ${
-                                (payout.deliverables / targetDeliverables) >= 1 ? 'bg-success' :
-                                (payout.deliverables / targetDeliverables) >= 0.8 ? 'bg-warning' : 'bg-destructive'
-                              }`}
-                              style={{ width: `${Math.min(100, (payout.deliverables / targetDeliverables) * 100)}%` }}
-                            />
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-sm">
+                              <span>{`${payout.deliverables}/${targetDeliverables}`}</span>
+                              <span>{Math.round((payout.deliverables / targetDeliverables) * 100)}%</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-1">
+                              <div 
+                                className={`h-1 rounded-full ${
+                                  ((payout.deliverables / targetDeliverables) >= 1) ? 'bg-success' :
+                                  ((payout.deliverables / targetDeliverables) >= 0.8) ? 'bg-warning' : 'bg-destructive'
+                                }`}
+                                style={{ width: `${Math.min(100, (payout.deliverables / targetDeliverables) * 100)}%` }}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </TableCell>
                       <TableCell>KShs {basePay}</TableCell>
                       <TableCell>KShs {payout.commission}</TableCell>

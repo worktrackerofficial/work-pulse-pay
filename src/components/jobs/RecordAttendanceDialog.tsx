@@ -46,7 +46,7 @@ export function RecordAttendanceDialog({ children, jobId, workers, onAttendanceR
     const attendanceRecords = Object.entries(attendance).map(([workerId, present]) => ({
       worker_id: workerId,
       job_id: jobId,
-      attendance_date: selectedDate.toISOString().split('T')[0],
+      attendance_date: selectedDate.toLocaleDateString('en-CA'),
       status: (present ? 'present' : 'absent') as 'present' | 'absent'
     }));
 

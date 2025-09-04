@@ -248,7 +248,8 @@ export default function Reports() {
         record.status === 'present'
       ).length;
 
-      // Count deliverables for this worker-job combination
+      // For team commission jobs, deliverables are stored in payout record as 0
+      // For other jobs, get individual deliverables
       const totalDeliverables = deliverables
         .filter(record => 
           record.worker_id === payout.worker_id && 

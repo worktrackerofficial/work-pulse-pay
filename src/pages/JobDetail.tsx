@@ -46,6 +46,7 @@ export default function JobDetail() {
   const [loading, setLoading] = useState(true);
   const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
   const [recentDeliverables, setRecentDeliverables] = useState<any[]>([]);
+  const [teamDeliverables, setTeamDeliverables] = useState<any[]>([]);
 
   useEffect(() => {
     if (jobId) {
@@ -103,10 +104,19 @@ export default function JobDetail() {
         .order('deliverable_date', { ascending: false })
         .limit(10);
 
+      // Fetch team deliverables for pool commission jobs
+      const { data: teamDeliverablesData, error: teamDeliverablesError } = await supabase
+        .from('team_deliverables')
+        .select('*')
+        .eq('job_id', jobId)
+        .order('deliverable_date', { ascending: false })
+        .limit(10);
+
       setJob(jobData);
       setWorkers(workersData?.map(jw => jw.workers).filter(Boolean) || []);
       setRecentAttendance(attendanceData || []);
       setRecentDeliverables(deliverablesData || []);
+      setTeamDeliverables(teamDeliverablesData || []);
     } catch (error) {
       console.error('Error fetching job data:', error);
     } finally {
@@ -383,10 +393,39 @@ export default function JobDetail() {
                   Target: {job.target_deliverable} {job.deliverable_type}
                 </p>
                 <p className="text-muted-foreground">
-                  Total Recorded: {recentDeliverables.reduce((sum, d) => sum + d.quantity, 0)} {job.deliverable_type}
+                  Total Recorded: {
+                    job.pay_structure === 'team_commission' 
+                      ? teamDeliverables.reduce((sum, d) => sum + d.quantity, 0)
+                      : recentDeliverables.reduce((sum, d) => sum + d.quantity, 0)
+                  } {job.deliverable_type}
                 </p>
               </div>
-              {recentDeliverables.length > 0 ? (
+
+              {/* Team Commission Deliverables */}
+              {job.pay_structure === 'team_commission' && teamDeliverables.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="font-medium mb-3 text-primary">Team Deliverables</h4>
+                  <div className="space-y-3">
+                    {teamDeliverables.map((record) => (
+                      <div key={record.id} className="flex justify-between items-center p-3 border rounded-lg bg-primary/5">
+                        <div>
+                          <p className="font-medium">Team Total</p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(record.deliverable_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-primary">{record.quantity} {job.deliverable_type}</p>
+                          <p className="text-xs text-muted-foreground">Pool Commission</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Individual Worker Deliverables */}
+              {job.pay_structure !== 'team_commission' && recentDeliverables.length > 0 ? (
                 <div className="space-y-3">
                   {recentDeliverables.map((record) => (
                     <div key={record.id} className="flex justify-between items-center p-3 border rounded-lg">
@@ -405,11 +444,15 @@ export default function JobDetail() {
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : job.pay_structure !== 'team_commission' ? (
                 <p className="text-muted-foreground">
                   No deliverables recorded yet. Start tracking worker output.
                 </p>
-              )}
+              ) : teamDeliverables.length === 0 ? (
+                <p className="text-muted-foreground">
+                  No team deliverables recorded yet. Start tracking team output.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
