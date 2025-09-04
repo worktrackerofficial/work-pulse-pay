@@ -51,7 +51,8 @@ export default function Jobs() {
         .select(`
           *,
           job_workers(count)
-        `);
+        `)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 

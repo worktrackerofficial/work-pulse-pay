@@ -43,7 +43,8 @@ export default function Workers() {
           job_workers!inner(
             jobs(name)
           )
-        `);
+        `)
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       

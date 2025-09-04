@@ -38,60 +38,7 @@ interface PayoutData {
   payment_type: string;
 }
 
-// Mock data
-const payouts = [
-  {
-    id: 1,
-    worker: "John Smith",
-    job: "Warehouse Team Alpha",
-    period: "Week 1-2 Jan 2024",
-    daysWorked: 10,
-    totalDays: 10,
-    deliverables: 1450,
-    targetDeliverables: 1500,
-    basePay: 800,
-    commission: 290,
-    bonus: 100,
-    deductions: 0,
-    totalPayout: 1190,
-    status: "pending",
-    paymentType: "Commission + Base"
-  },
-  {
-    id: 2,
-    worker: "Sarah Johnson", 
-    job: "Delivery Squad Beta",
-    period: "Week 1-2 Jan 2024",
-    daysWorked: 9,
-    totalDays: 10,
-    deliverables: 520,
-    targetDeliverables: 500,
-    basePay: 720,
-    commission: 260,
-    bonus: 50,
-    deductions: 10,
-    totalPayout: 1020,
-    status: "processed",
-    paymentType: "Per Delivery"
-  },
-  {
-    id: 3,
-    worker: "Mike Chen",
-    job: "Customer Support Team", 
-    period: "Week 1-2 Jan 2024",
-    daysWorked: 10,
-    totalDays: 10,
-    deliverables: 280,
-    targetDeliverables: 300,
-    basePay: 1000,
-    commission: 140,
-    bonus: 0,
-    deductions: 0,
-    totalPayout: 1140,
-    status: "approved",
-    paymentType: "Hourly + Bonus"
-  }
-];
+// Mock data removed - using only actual calculated payouts from database
 
 export default function Payouts() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -111,7 +58,8 @@ export default function Payouts() {
       // First check for existing stored payouts
       const { data: storedPayouts, error: payoutsError } = await supabase
         .from('payouts')
-        .select('*');
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (payoutsError) throw payoutsError;
 
@@ -131,8 +79,7 @@ export default function Payouts() {
             flat_rate,
             commission_per_item,
             hourly_rate,
-            target_deliverable,
- 
+            target_deliverable
           )
         `);
 
@@ -264,7 +211,7 @@ export default function Payouts() {
             flat_rate: record.jobs?.flat_rate || 0,
             commission_per_item: record.jobs?.commission_per_item || 0,
             hourly_rate: record.jobs?.hourly_rate || 0,
- : record.jobs?.commission_pool || 0
+            commission_pool: record.jobs?.commission_pool || 0
           });
         }
       }
@@ -316,10 +263,17 @@ export default function Payouts() {
           break;
         case 'team_commission':
           // Pool-based job: pool equals *all deliverables for this job so far* × commission_per_item
-          const pool = (jobDeliverableSums.get(worker.job_id) || 0) * worker.commission_per_item;
-          if (worker.total_days > 0 && pool > 0) {
-            const shareRatio = worker.days_worked / totalWorkingDaysSoFar;
-            commission = pool * shareRatio;
+          const teamDeliverables = jobDeliverableSums.get(worker.job_id) || 0;
+          const pool = teamDeliverables * worker.commission_per_item;
+          if (pool > 0) {
+            // Calculate total days worked by all team members for this job
+            const jobWorkers = jobGroups.get(worker.job_id) || [];
+            const totalJobDaysWorked = jobWorkers.reduce((sum, w) => sum + w.days_worked, 0);
+            
+            if (totalJobDaysWorked > 0) {
+              const shareRatio = worker.days_worked / totalJobDaysWorked;
+              commission = pool * shareRatio;
+            }
           }
           break;
       }
@@ -333,7 +287,7 @@ export default function Payouts() {
         period_end: periodEnd.toISOString().split('T')[0],
         days_worked: worker.days_worked,
         total_days: worker.total_days,
-        deliverables: worker.pay_structure === 'team_commission' ? 0 : worker.deliverables,
+        deliverables: worker.pay_structure === 'team_commission' ? (jobDeliverableSums.get(worker.job_id) || 0) : worker.deliverables,
         target_deliverables: worker.target_deliverables,
         base_pay: basePay,
         commission: commission,
@@ -455,7 +409,7 @@ export default function Payouts() {
     return allPayouts;
   };
 
-  const filteredPayouts = (payoutsData.length > 0 ? payoutsData : payouts).filter(payout => {
+  const filteredPayouts = payoutsData.filter(payout => {
     const workerName = 'worker' in payout ? payout.worker : payout.worker_name;
     const jobName = 'job' in payout ? payout.job : payout.job_name;
     const matchesSearch = workerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -563,7 +517,7 @@ export default function Payouts() {
     }
   };
 
-  const actualPayouts = payoutsData.length > 0 ? payoutsData : payouts;
+  const actualPayouts = payoutsData;
   const totalPending = actualPayouts.filter(p => p.status === 'pending').reduce((sum, p) => {
     const total = 'totalPayout' in p ? p.totalPayout : p.total_payout;
     return sum + Number(total);
@@ -716,9 +670,23 @@ export default function Payouts() {
                       </TableCell>
                       <TableCell>
                         {paymentType === 'team_commission' ? (
-                          <div className="text-center">
-                            <span className="text-sm text-muted-foreground">Team Pool</span>
-                            <p className="text-xs text-primary">Based on days worked</p>
+                          <div className="space-y-1">
+                            <div className="text-center">
+                              <div className="text-sm font-medium">Team: {payout.deliverables}/{targetDeliverables}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Your share: {daysWorked} days ({Math.round((daysWorked / totalDays) * 100)}%)
+                              </div>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-1">
+                              <div 
+                                className={`h-1 rounded-full ${
+                                  ((payout.deliverables / targetDeliverables) >= 1) ? 'bg-success' :
+                                  ((payout.deliverables / targetDeliverables) >= 0.8) ? 'bg-warning' : 'bg-destructive'
+                                }`}
+                                style={{ width: `${Math.min(100, (payout.deliverables / targetDeliverables) * 100)}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-primary text-center">Pool Commission</p>
                           </div>
                         ) : (
                           <div className="space-y-1">

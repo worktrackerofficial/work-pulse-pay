@@ -376,7 +376,7 @@ export default function Reports() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Payouts</p>
-                <p className="text-2xl font-bold text-foreground">${stats.totalPayouts.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-foreground">KShs {stats.totalPayouts.toLocaleString()}</p>
                 <p className="text-xs text-success">Current period</p>
               </div>
               <TrendingUp className="h-8 w-8 text-primary" />
@@ -455,9 +455,9 @@ export default function Reports() {
                       {report.days_worked}/{report.total_days}
                     </TableCell>
                     <TableCell>{report.deliverables}</TableCell>
-                    <TableCell>${report.base_pay.toFixed(2)}</TableCell>
-                    <TableCell>${report.commission.toFixed(2)}</TableCell>
-                    <TableCell className="font-medium">${report.total_payout.toFixed(2)}</TableCell>
+                    <TableCell>KShs {report.base_pay.toFixed(2)}</TableCell>
+                    <TableCell>KShs {report.commission.toFixed(2)}</TableCell>
+                    <TableCell className="font-medium">KShs {report.total_payout.toFixed(2)}</TableCell>
                     <TableCell>
                       <span className={`px-2 py-1 rounded-full text-xs ${
                         report.status === 'processed' 
